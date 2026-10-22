@@ -1,0 +1,32 @@
+[Unit]
+Description=SwitchBook Network Infrastructure Management Platform
+Documentation=https://github.com/company/switchbook
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=switchbook
+Group=switchbook
+WorkingDirectory=/opt/switchbook
+ExecStart=/usr/bin/node server/index.js
+Restart=always
+RestartSec=5s
+
+# Environment configuration
+Environment=NODE_ENV=production
+Environment=PORT=3050
+
+# Resource limits & Security sandbox
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=switchbook
+
+# Security hardening
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

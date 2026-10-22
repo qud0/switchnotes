@@ -1,0 +1,36 @@
+# Node.js dependencies
+node_modules/
+
+# Production frontend build
+dist/
+
+# Local databases and backups (protect enterprise secrets)
+backups/
+data/
+server/data/
+*.json.tmp
+*.zip
+*.rar
+*.tar.gz
+*.7z
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.cert
+
+# Logs
+*.log
+npm-debug.log*
+
+# System & IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Rust shutdown timer artifacts
+shutdown_timer/

@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Ubuntu Sans', 'Ubuntu', system-ui, -apple-system, sans-serif;
+  }
+  
+  code, pre, .font-mono {
+    font-family: 'Ubuntu Mono', monospace;
+  }
+}
+
+/* Light & Dark Theme Custom Scrollbars */
+.dark ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.dark ::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+.light ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.light ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+.light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Diagonal stripes pattern for Trunk ports */
+.trunk-stripes {
+  background-size: 8px 8px;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.18),
+    rgba(255, 255, 255, 0.18) 3px,
+    transparent 3px,
+    transparent 6px
+  );
+}
+
+.trunk-stripes-light {
+  background-size: 8px 8px;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(0, 0, 0, 0.12),
+    rgba(0, 0, 0, 0.12) 3px,
+    transparent 3px,
+    transparent 6px
+  );
+}
+
+/* Print Styles for A4 Passport & Cable Schedule */
+@media print {
+  body, html {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 10pt !important;
+    zoom: 1 !important;
+  }
+
+  header, nav, aside, button, input, select, .no-print, .print\:hidden {
+    display: none !important;
+  }
+
+  svg {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+  }
+
+  /* When printing from modal with #print-document, hide main */
+  body:has(#print-document) #root > div > main {
+    display: none !important;
+  }
+
+  #root > div > header {
+    display: none !important;
+  }
+
+  #print-document {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  table {
+    page-break-inside: auto;
+    width: 100% !important;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  @page {
+    margin: 8mm;
+    size: A4 portrait;
+  }
+
+  .print-label-item {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
+
