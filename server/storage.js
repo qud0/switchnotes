@@ -1570,6 +1570,7 @@ export class Storage {
     }
 
     const newAllocation = {
+      ...ipData,
       id: ipData.id || `ip-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       ip: ip,
       vlanId: vlanId,
@@ -2078,6 +2079,41 @@ export class Storage {
     };
     this.save();
     return this.data.notificationSettings;
+  }
+
+  // --- ACTIVE DIRECTORY INTEGRATION (СИНХРОНИЗАЦИЯ AD / LDAP) ---
+
+  getAdSettings() {
+    return this.data.adSettings || {
+      enabled: false,
+      server: '',
+      port: 389,
+      useTls: false,
+      baseDn: '',
+      searchBase: '',
+      bindDn: '',
+      password: '',
+      dnsServer: '',
+      autoSyncEnabled: false,
+      syncIntervalHours: 6,
+      filterInactiveDays: 90,
+      targetVlanId: null,
+      lastSync: null,
+      lastStatus: null,
+      lastCount: 0,
+      lastCreated: 0,
+      lastUpdated: 0,
+      lastError: null
+    };
+  }
+
+  updateAdSettings(settings) {
+    this.data.adSettings = {
+      ...this.getAdSettings(),
+      ...settings
+    };
+    this.save();
+    return this.data.adSettings;
   }
 
   // --- SERVERS & HYPERVISORS (СЕРВЕРЫ И ВИРТУАЛИЗАЦИЯ) ---

@@ -22,6 +22,7 @@ import {
 import { initWebSshServer } from './webSshServer.js';
 import { runComprehensiveTroubleshoot } from './troubleshootEngine.js';
 import { snmpMonitorDaemon } from './snmpMonitorDaemon.js';
+import { adSyncService } from './adSyncService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1392,6 +1393,86 @@ app.post('/api/monitoring/notifications/test', requireRole('admin'), async (req,
   }
 });
 
+// --- ACTIVE DIRECTORY / LDAP INTEGRATION ROUTES ---
+
+// Get Active Directory sync settings
+app.get('/api/ad/settings', requireRole('engineer'), (req, res) => {
+  try {
+    const settings = storage.getAdSettings();
+    const safeSettings = {
+      ...settings,
+      password: settings.password ? '••••••••' : ''
+    };
+    res.json(safeSettings);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update Active Directory sync settings
+app.put('/api/ad/settings', requireRole('admin'), (req, res) => {
+  try {
+    const current = storage.getAdSettings();
+    const updates = { ...req.body };
+    if (!updates.password || updates.password === '••••••••') {
+      updates.password = current.password || '';
+    }
+    const updated = storage.updateAdSettings(updates);
+    adSyncService.scheduleNextRun();
+    res.json({
+      ...updated,
+      password: updated.password ? '••••••••' : ''
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Test Active Directory LDAP connection
+app.post('/api/ad/test', requireRole('engineer'), async (req, res) => {
+  try {
+    const current = storage.getAdSettings();
+    const settings = { ...current, ...(req.body || {}) };
+    if (!settings.password || settings.password === '••••••••') {
+      settings.password = current.password || '';
+    }
+    const result = await adSyncService.testConnection(settings);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Preview computers and resolved IPs from Active Directory
+app.post('/api/ad/preview', requireRole('engineer'), async (req, res) => {
+  try {
+    const current = storage.getAdSettings();
+    const settings = { ...current, ...(req.body || {}) };
+    if (!settings.password || settings.password === '••••••••') {
+      settings.password = current.password || '';
+    }
+    const preview = await adSyncService.previewAdSync(settings);
+    res.json(preview);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Trigger synchronization from Active Directory to IPAM
+app.post('/api/ad/sync', requireRole('engineer'), async (req, res) => {
+  try {
+    const current = storage.getAdSettings();
+    const settings = { ...current, ...(req.body || {}) };
+    if (!settings.password || settings.password === '••••••••') {
+      settings.password = current.password || '';
+    }
+    const result = await adSyncService.syncAdToIpam(settings);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- AUDIT LOG & CONFIG HISTORY API ---
 
 // Get audit log entries
@@ -1660,6 +1741,7 @@ server.listen(PORT, () => {
   try {
     backupScheduler.init();
     snmpMonitorDaemon.init(storage);
+    adSyncService.init(storage);
   } catch (err) {
     console.error('[Services] Ошибка инициализации фоновых служб:', err.message);
   }

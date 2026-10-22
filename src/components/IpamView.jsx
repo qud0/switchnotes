@@ -17,7 +17,8 @@ import {
   CheckCircle2,
   Shield,
   Zap,
-  Tag
+  Tag,
+  Users
 } from 'lucide-react';
 import { parseSubnet, isIpInDhcpRange, longToIp, ipToLong } from '../utils/ipamUtils';
 import { downloadCsv } from '../utils/exportUtils';
@@ -50,6 +51,7 @@ export function IpamView({
   onConfigureSubnet,
   onReloadIpam,
   onSelectServer,
+  onOpenAdModal,
   theme = 'dark'
 }) {
   const openCreateModal = onOpenCreateIpModal || onAddIp;
@@ -365,6 +367,21 @@ export function IpamView({
                     <span>{isSyncing ? 'Синхронизация...' : 'Синхронизация ВМ'}</span>
                   </button>
 
+                  {onOpenAdModal && (
+                    <button
+                      onClick={onOpenAdModal}
+                      className={`flex items-center gap-1.5 px-3 h-9 rounded-xl border text-xs font-medium transition-colors cursor-pointer ${
+                        isLight
+                          ? 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700'
+                          : 'bg-blue-950/40 hover:bg-blue-900/60 border-blue-800 text-blue-300'
+                      }`}
+                      title="Интеграция и синхронизация с Active Directory (LDAP + DNS)"
+                    >
+                      <Users className="w-3.5 h-3.5 text-blue-500" />
+                      <span>Active Directory</span>
+                    </button>
+                  )}
+
                   <button
                     onClick={() => openSubnetModal?.(selectedVlan)}
                     className={`flex items-center gap-1.5 px-3 h-9 rounded-xl border text-xs font-medium transition-colors cursor-pointer ${
@@ -581,7 +598,17 @@ export function IpamView({
                                   {item.ip}
                                 </td>
                                 <td className="py-2.5 px-3 font-medium text-slate-900 dark:text-white">
-                                  {item.hostname || '—'}
+                                  <div className="flex items-center gap-1.5">
+                                    <span>{item.hostname || '—'}</span>
+                                    {item.adSync && (
+                                      <span
+                                        className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-blue-500/15 text-blue-500 border border-blue-500/30 cursor-help"
+                                        title={`Синхронизировано из Active Directory (${item.adDomain || 'AD'})\nОС: ${item.adOs || 'Не указана'}\nСинхронизировано: ${item.adSyncTime ? new Date(item.adSyncTime).toLocaleString() : '—'}`}
+                                      >
+                                        AD
+                                      </span>
+                                    )}
+                                  </div>
                                 </td>
                                 <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
                                   {item.mac || '—'}

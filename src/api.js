@@ -1070,5 +1070,67 @@ export const api = {
       throw new Error(err.error || 'Ошибка удаления пользователя');
     }
     return res.json();
+  },
+
+  // Active Directory (LDAP + DNS) Integration
+  getAdSettings: async () => {
+    const res = await fetch(`${API_BASE}/ad/settings`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка загрузки настроек Active Directory');
+    }
+    return res.json();
+  },
+
+  updateAdSettings: async (settings) => {
+    const res = await fetch(`${API_BASE}/ad/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка сохранения настроек Active Directory');
+    }
+    return res.json();
+  },
+
+  testAdConnection: async (settings) => {
+    const res = await fetch(`${API_BASE}/ad/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка тестирования подключения к контроллеру домена');
+    }
+    return res.json();
+  },
+
+  previewAdComputers: async (settings) => {
+    const res = await fetch(`${API_BASE}/ad/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка предпросмотра компьютеров из Active Directory');
+    }
+    return res.json();
+  },
+
+  syncAdToIpam: async (settings) => {
+    const res = await fetch(`${API_BASE}/ad/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка синхронизации с Active Directory');
+    }
+    return res.json();
   }
 };

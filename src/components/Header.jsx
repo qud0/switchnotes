@@ -67,7 +67,8 @@ export function Header({
   onZoomOut,
   onZoomReset,
   onOpenUsersModal,
-  onOpenLoginModal
+  onOpenLoginModal,
+  onOpenAdModal
 }) {
   const fileInputRef = useRef(null);
   const isLight = theme === 'light';
@@ -585,6 +586,22 @@ export function Header({
             >
               <Users className="w-3.5 h-3.5 text-purple-400 shrink-0" />
               <span className="hidden sm:inline">Пользователи</span>
+            </button>
+          )}
+
+          {/* Active Directory Sync Button (Admin/Engineer, h-9) */}
+          {canEdit && onOpenAdModal && (
+            <button
+              onClick={onOpenAdModal}
+              className={`h-9 px-2.5 sm:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
+                isLight
+                  ? 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700'
+                  : 'bg-blue-950/40 hover:bg-blue-900/60 border-blue-800 text-blue-300'
+              }`}
+              title="Интеграция с Active Directory (LDAP + DNS)"
+            >
+              <Shield className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <span className="hidden sm:inline">Active Directory</span>
             </button>
           )}
 

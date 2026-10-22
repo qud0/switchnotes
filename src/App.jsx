@@ -42,6 +42,7 @@ const DeviceTraceModal = lazy(() => import('./components/DeviceTraceModal'));
 const MacDiscoveryModal = lazy(() => import('./components/MacDiscoveryModal'));
 const WebSshModal = lazy(() => import('./components/WebSshModal'));
 const TroubleshooterModal = lazy(() => import('./components/TroubleshooterModal'));
+const ActiveDirectoryModal = lazy(() => import('./components/ActiveDirectoryModal').then(m => ({ default: m.ActiveDirectoryModal })));
 import LoginModal from './components/LoginModal';
 import UsersModal from './components/UsersModal';
 import { useAuth } from './context/AuthContext';
@@ -83,6 +84,7 @@ export default function App() {
 
   // IPAM modals state
   const [isIpamModalOpen, setIsIpamModalOpen] = useState(false);
+  const [isAdModalOpen, setIsAdModalOpen] = useState(false);
   const [editingIpAllocation, setEditingIpAllocation] = useState(null);
   const [targetVlanForIp, setTargetVlanForIp] = useState(null);
   const [isSubnetModalOpen, setIsSubnetModalOpen] = useState(false);
@@ -793,6 +795,7 @@ export default function App() {
         onZoomReset={() => handleZoomChange(100)}
         onOpenUsersModal={() => setIsUsersModalOpen(true)}
         onOpenLoginModal={() => setIsLoginModalOpen(true)}
+        onOpenAdModal={() => setIsAdModalOpen(true)}
       />
 
       {/* Main Layout */}
@@ -862,6 +865,7 @@ export default function App() {
             onSelectServer={(id) => {
               setCurrentView('servers');
             }}
+            onOpenAdModal={() => setIsAdModalOpen(true)}
             theme={theme}
           />
         ) : currentView === 'topology' ? (
@@ -906,6 +910,7 @@ export default function App() {
             onSelectServer={(id) => {
               setCurrentView('servers');
             }}
+            onOpenAdModal={() => setIsAdModalOpen(true)}
             theme={theme}
           />
         ) : currentView === 'campus' ? (
@@ -1454,6 +1459,17 @@ export default function App() {
         isOpen={isUsersModalOpen}
         onClose={() => setIsUsersModalOpen(false)}
       />
+
+      {/* Active Directory Integration Modal */}
+      <Suspense fallback={null}>
+        <ActiveDirectoryModal
+          isOpen={isAdModalOpen}
+          onClose={() => setIsAdModalOpen(false)}
+          vlans={vlans}
+          onSyncComplete={fetchData}
+          theme={theme}
+        />
+      </Suspense>
     </div>
   );
 }
