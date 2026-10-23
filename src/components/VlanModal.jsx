@@ -19,7 +19,7 @@ const PRESET_COLORS = [
 
 export function VlanModal({ isOpen, onClose, vlans, onVlansUpdated, theme = 'dark' }) {
   const [editingId, setEditingId] = useState(null);
-  const [formData, setFormData] = useState({ id: '', name: '', color: '#3b82f6', description: '' });
+  const [formData, setFormData] = useState({ id: '', name: '', color: '#3b82f6', description: '', subnet: '', gateway: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -32,7 +32,9 @@ export function VlanModal({ isOpen, onClose, vlans, onVlansUpdated, theme = 'dar
       id: '',
       name: '',
       color: PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)],
-      description: ''
+      description: '',
+      subnet: '',
+      gateway: ''
     });
     setError('');
   };
@@ -43,7 +45,9 @@ export function VlanModal({ isOpen, onClose, vlans, onVlansUpdated, theme = 'dar
       id: vlan.id,
       name: vlan.name,
       color: vlan.color,
-      description: vlan.description || ''
+      description: vlan.description || '',
+      subnet: vlan.subnet || '',
+      gateway: vlan.gateway || ''
     });
     setError('');
   };
@@ -192,6 +196,33 @@ export function VlanModal({ isOpen, onClose, vlans, onVlansUpdated, theme = 'dar
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">IP Подсеть (CIDR)</label>
+                  <input
+                    type="text"
+                    value={formData.subnet || ''}
+                    onChange={(e) => setFormData({ ...formData, subnet: e.target.value })}
+                    placeholder="Например: 192.168.20.0/24"
+                    className={`w-full border rounded-lg px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-hidden ${
+                      isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Основной шлюз (Gateway)</label>
+                  <input
+                    type="text"
+                    value={formData.gateway || ''}
+                    onChange={(e) => setFormData({ ...formData, gateway: e.target.value })}
+                    placeholder="Например: 192.168.20.1"
+                    className={`w-full border rounded-lg px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-hidden ${
+                      isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                    }`}
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs text-slate-500 mb-1">Описание / Назначение</label>
                 <input
@@ -260,17 +291,27 @@ export function VlanModal({ isOpen, onClose, vlans, onVlansUpdated, theme = 'dar
                       style={{ backgroundColor: vlan.color }}
                     />
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className={`font-mono font-bold text-sm ${isLight ? 'text-slate-900' : 'text-white'}`}>
                           VLAN {vlan.id}
                         </span>
                         <span className={`font-medium text-sm truncate ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
                           {vlan.name}
                         </span>
+                        {vlan.subnet && (
+                          <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                            {vlan.subnet}
+                          </span>
+                        )}
                       </div>
-                      {vlan.description && (
-                        <div className="text-xs text-slate-500 truncate mt-0.5">{vlan.description}</div>
-                      )}
+                      <div className="text-xs text-slate-500 flex items-center gap-2 flex-wrap mt-0.5">
+                        {vlan.gateway && (
+                          <span>Шлюз: <strong className="font-mono text-slate-600 dark:text-slate-300">{vlan.gateway}</strong></span>
+                        )}
+                        {vlan.description && (
+                          <span>• {vlan.description}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
 

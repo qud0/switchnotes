@@ -459,7 +459,7 @@ export function Header({
             title={unreadAlertsCount > 0 ? `Журнал алертов: ${unreadAlertsCount} неквитированных инцидентов` : 'Журнал алертов и мониторинга сети'}
           >
             <Bell className={`w-3.5 h-3.5 shrink-0 ${unreadAlertsCount > 0 ? 'text-rose-500 animate-bounce' : 'text-slate-400'}`} />
-            <span className="hidden sm:inline">Алерты</span>
+            <span className="hidden xl:inline">Алерты</span>
             {unreadAlertsCount > 0 && (
               <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-rose-500 text-white">
                 {unreadAlertsCount}
@@ -478,7 +478,7 @@ export function Header({
             title="Live-диагностика, поиск розетки/порта и Ping (Ctrl+F)"
           >
             <Activity className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-            <span className="hidden sm:inline">Поиск / Ping</span>
+            <span className="hidden xl:inline">Поиск / Ping</span>
           </button>
 
           {/* Report & Passport Button (h-9) */}
@@ -492,7 +492,7 @@ export function Header({
             title="Паспорт узла связи и кабельный журнал (Печать / PDF)"
           >
             <Printer className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-            <span className="hidden sm:inline">Паспорт</span>
+            <span className="hidden xl:inline">Паспорт</span>
           </button>
 
           {/* Network Audit Button (h-9) */}
@@ -510,7 +510,7 @@ export function Header({
             title={`Аудит сети: индекс здоровья ${auditHealthScore}/100, замечаний: ${auditIssuesCount}`}
           >
             <ShieldAlert className={`w-3.5 h-3.5 shrink-0 ${auditIssuesCount > 0 ? 'text-amber-500' : 'text-emerald-500'}`} />
-            <span className="hidden sm:inline">Аудит</span>
+            <span className="hidden xl:inline">Аудит</span>
             <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold border ${
               auditHealthScore >= 90
                 ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
@@ -534,7 +534,7 @@ export function Header({
               title="Интеллектуальный «Траблшутер» сетевых неполадок (L1-L4)"
             >
               <Wrench className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span className="hidden sm:inline">Траблшутер</span>
+              <span className="hidden xl:inline">Траблшутер</span>
             </button>
           )}
 
@@ -549,7 +549,7 @@ export function Header({
             title="Открыть справочник VLAN"
           >
             <Tag className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-            <span className="hidden sm:inline">VLANs</span>
+            <span className="hidden xl:inline">VLANs</span>
             <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono border ${
               isLight
                 ? 'bg-white text-slate-600 border-slate-300'
@@ -570,7 +570,7 @@ export function Header({
             title="Каталог заводских моделей коммутаторов (Eltex, Cisco, MikroTik, SNR, Huawei, D-Link, Zyxel, Ubiquiti)"
           >
             <Sparkles className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-            <span className="hidden sm:inline">Шаблоны</span>
+            <span className="hidden xl:inline">Шаблоны</span>
           </button>
 
           {/* Users RBAC Button (Admin only, h-9) */}
@@ -585,7 +585,7 @@ export function Header({
               title="Управление пользователями и правами (RBAC)"
             >
               <Users className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-              <span className="hidden sm:inline">Пользователи</span>
+              <span className="hidden xl:inline">Пользователи</span>
             </button>
           )}
 
@@ -601,7 +601,7 @@ export function Header({
               title="Интеграция с Active Directory (LDAP + DNS)"
             >
               <Shield className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-              <span className="hidden sm:inline">Active Directory</span>
+              <span className="hidden xl:inline">Active Directory</span>
             </button>
           )}
 
@@ -616,7 +616,7 @@ export function Header({
             title="Импортировать коммутатор из CLI-конфига"
           >
             <FileCode className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-            <span className="hidden sm:inline">Импорт</span>
+            <span className="hidden xl:inline">Импорт</span>
           </button>
 
           {/* Backup Group (h-9) */}

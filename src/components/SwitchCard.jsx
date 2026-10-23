@@ -87,7 +87,11 @@ export function SwitchCard({ switchItem, allSwitches = [], isSelected, onSelect,
                 e.stopPropagation();
                 onOpenTroubleshoot(switchItem.id);
               }}
-              className="p-1 rounded-md bg-slate-800/80 hover:bg-amber-600 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              className={`p-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
+                isLight
+                  ? 'bg-amber-50 hover:bg-amber-100 border-amber-200 text-amber-800'
+                  : 'bg-slate-800/90 hover:bg-amber-600/30 border-slate-750 text-amber-400 hover:text-amber-300'
+              }`}
               title="Интеллектуальный траблшутер неполадок коммутатора"
             >
               <Wrench className="w-3.5 h-3.5" />
@@ -100,7 +104,11 @@ export function SwitchCard({ switchItem, allSwitches = [], isSelected, onSelect,
                 e.stopPropagation();
                 onOpenWebSsh(switchItem);
               }}
-              className="p-1 rounded-md bg-slate-800/80 hover:bg-blue-600 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              className={`p-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
+                isLight
+                  ? 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-800'
+                  : 'bg-slate-800/90 hover:bg-blue-600/30 border-slate-750 text-blue-400 hover:text-blue-300'
+              }`}
               title="Открыть интерактивный Web-SSH терминал"
             >
               <Terminal className="w-3.5 h-3.5" />

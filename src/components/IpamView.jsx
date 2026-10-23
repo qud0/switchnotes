@@ -471,54 +471,95 @@ export function IpamView({
               {/* TAB 1: INTERACTIVE IP MATRIX GRID */}
               {activeTab === 'grid' ? (
                 <div className="space-y-4">
-                  <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 overflow-x-auto">
-                    {/* Grid of 254 IP addresses */}
-                    <div className="min-w-[700px] grid grid-cols-16 gap-1.5">
-                      {gridCells.map((cell) => {
-                        const isAllocated = Boolean(cell.alloc);
-                        const devType = cell.isGateway ? 'gateway' : (cell.alloc?.type || 'other');
-                        const colors = TYPE_COLORS[devType] || TYPE_COLORS.other;
-
-                        return (
-                          <div
-                            key={cell.ip}
-                            onClick={() => {
-                              if (cell.alloc) {
-                                openEditModal?.(cell.alloc);
-                              } else {
-                                openCreateModal?.(selectedVlan.id, cell.ip);
-                              }
-                            }}
-                            title={
-                              cell.alloc
-                                ? `${cell.ip} — ${cell.alloc.hostname || 'Без имени'}\nТип: ${cell.alloc.type}\nMAC: ${cell.alloc.mac || '—'}\nМесто: ${cell.alloc.location || '—'}\nКликните для редактирования`
-                                : `${cell.ip} — Свободный IP-адрес\nКликните для быстрого выделения`
-                            }
-                            className={`h-9 rounded-md border flex flex-col items-center justify-center cursor-pointer transition-all relative select-none ${
-                              isAllocated
-                                ? `${colors.bg} text-white border-transparent shadow-xs hover:scale-115 hover:z-20`
-                                : cell.inDhcp
-                                ? (isLight
-                                    ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100 hover:scale-110'
-                                    : 'bg-amber-950/20 border-amber-800/60 text-amber-400 hover:bg-amber-900/30 hover:scale-110')
-                                : (isLight
-                                    ? 'bg-white border-slate-200 text-slate-500 hover:border-blue-400 hover:text-blue-600 hover:scale-110'
-                                    : 'bg-slate-900 border-slate-800 text-slate-500 hover:border-blue-500 hover:text-blue-400 hover:scale-110')
-                            }`}
+                  {gridCells.length === 0 ? (
+                    <div className={`p-8 rounded-2xl border text-center space-y-3 ${
+                      isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'
+                    }`}>
+                      <Globe className="w-10 h-10 mx-auto text-blue-500/60" />
+                      <div className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                        {subnetInfo && subnetInfo.totalUsable > 256
+                          ? `Масштабная подсеть ${selectedVlan.subnet} (${subnetInfo.totalUsable} адресов)`
+                          : 'Подсеть для данного VLAN не настроена'}
+                      </div>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto">
+                        {subnetInfo && subnetInfo.totalUsable > 256
+                          ? 'Интерактивная матрица оптимизирована для подсетей маской до /24 (254 адреса). Для этой подсети используйте подробный табличный вид.'
+                          : 'Чтобы отобразить интерактивную карту адресов, задайте маску подсети в настройках VLAN.'}
+                      </p>
+                      <div className="flex items-center justify-center gap-2 pt-2">
+                        {subnetInfo && subnetInfo.totalUsable > 256 ? (
+                          <button
+                            onClick={() => setActiveTab('table')}
+                            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-xs cursor-pointer"
                           >
-                            <span className="font-mono text-[10px] font-bold leading-tight">
-                              .{cell.lastOctet}
-                            </span>
-                            {isAllocated && (
-                              <span className="text-[7px] font-mono leading-none truncate max-w-[36px] px-0.5 opacity-90">
-                                {cell.alloc.hostname ? cell.alloc.hostname.slice(0, 5) : 'USE'}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
+                            Перейти в таблицу адресов
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => openSubnetModal?.(selectedVlan)}
+                            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-xs cursor-pointer"
+                          >
+                            Настроить параметры подсети
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 overflow-x-auto">
+                      {/* Grid of 254 IP addresses */}
+                      <div className="min-w-[700px] grid grid-cols-16 gap-1.5">
+                        {gridCells.map((cell) => {
+                          const isAllocated = Boolean(cell.alloc);
+                          const devType = cell.isGateway ? 'gateway' : (cell.alloc?.type || 'other');
+                          const colors = TYPE_COLORS[devType] || TYPE_COLORS.other;
+
+                          return (
+                            <div
+                              key={cell.ip}
+                              onClick={() => {
+                                if (cell.alloc) {
+                                  openEditModal?.(cell.alloc);
+                                } else {
+                                  openCreateModal?.(selectedVlan.id, cell.ip);
+                                }
+                              }}
+                              title={
+                                cell.alloc
+                                  ? `${cell.ip} — ${cell.alloc.hostname || 'Без имени'}\nТип: ${cell.alloc.type}\nMAC: ${cell.alloc.mac || '—'}\nМесто: ${cell.alloc.location || '—'}${cell.alloc.adSync ? `\n[Active Directory]: ${cell.alloc.adDomain || ''} (${cell.alloc.adOs || 'Windows'})` : ''}\nКликните для редактирования`
+                                  : `${cell.ip} — Свободный IP-адрес\nКликните для быстрого выделения`
+                              }
+                              className={`h-9 rounded-md border flex flex-col items-center justify-center cursor-pointer transition-all relative select-none ${
+                                isAllocated
+                                  ? `${colors.bg} text-white border-transparent shadow-xs hover:scale-115 hover:z-20`
+                                  : cell.inDhcp
+                                  ? (isLight
+                                      ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100 hover:scale-110'
+                                      : 'bg-amber-950/20 border-amber-800/60 text-amber-400 hover:bg-amber-900/30 hover:scale-110')
+                                  : (isLight
+                                      ? 'bg-white border-slate-200 text-slate-500 hover:border-blue-400 hover:text-blue-600 hover:scale-110'
+                                      : 'bg-slate-900 border-slate-800 text-slate-500 hover:border-blue-500 hover:text-blue-400 hover:scale-110')
+                              }`}
+                            >
+                              {cell.alloc?.adSync && (
+                                <span
+                                  className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-cyan-300 shadow-xs"
+                                  title="Синхронизировано из AD"
+                                />
+                              )}
+                              <span className="font-mono text-[10px] font-bold leading-tight">
+                                .{cell.lastOctet}
+                              </span>
+                              {isAllocated && (
+                                <span className="text-[7px] font-mono leading-none truncate max-w-[36px] px-0.5 opacity-90">
+                                  {cell.alloc.hostname ? cell.alloc.hostname.slice(0, 5) : 'USE'}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 /* TAB 2: IP TABLE VIEW */
