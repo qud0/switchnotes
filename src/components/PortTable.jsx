@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Download, Search, Zap, Link as LinkIcon, AlertTriangle, ArrowUpRight, Filter, ChevronUp, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { VlanBadge } from './VlanBadge';
 import { checkVlanMismatch } from '../utils/vlanMismatch';
@@ -12,9 +12,47 @@ export function PortTable({
   theme = 'dark'
 }) {
   const [filterQuery, setFilterQuery] = useState('');
-  const [modeFilter, setModeFilter] = useState('all');
-  const [sortField, setSortField] = useState('number');
-  const [sortOrder, setSortOrder] = useState('asc'); // 'asc' or 'desc'
+
+  const [modeFilter, setModeFilter] = useState(() => {
+    try {
+      return localStorage.getItem('switchbook_port_mode_filter') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+
+  const [sortField, setSortField] = useState(() => {
+    try {
+      return localStorage.getItem('switchbook_port_sort_field') || 'number';
+    } catch {
+      return 'number';
+    }
+  });
+
+  const [sortOrder, setSortOrder] = useState(() => {
+    try {
+      return localStorage.getItem('switchbook_port_sort_order') || 'asc';
+    } catch {
+      return 'asc';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('switchbook_port_mode_filter', modeFilter);
+    } catch (e) {
+      console.warn('Failed to save modeFilter to localStorage', e);
+    }
+  }, [modeFilter]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('switchbook_port_sort_field', sortField);
+      localStorage.setItem('switchbook_port_sort_order', sortOrder);
+    } catch (e) {
+      console.warn('Failed to save sort state to localStorage', e);
+    }
+  }, [sortField, sortOrder]);
 
   const vlanMap = useMemo(() => {
     const map = {};

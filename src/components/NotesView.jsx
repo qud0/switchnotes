@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   BookOpen, Plus, Search, Pin, Trash2, Edit3, X, Check,
   Tag, Calendar, Sparkles, FileText, Code, CheckSquare
@@ -11,7 +11,21 @@ export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' })
   const isLight = theme === 'light';
   const toast = useToast();
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedCategory, setSelectedCategory] = useState(() => {
+    try {
+      return localStorage.getItem('switchbook_notes_category') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('switchbook_notes_category', selectedCategory);
+    } catch (e) {
+      console.warn('Failed to save notes category', e);
+    }
+  }, [selectedCategory]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Cable,
   Tag,
@@ -70,13 +70,72 @@ export function CableJournalView({
   const toast = useToast();
 
   // Active view tab: 'journal' or 'label_maker'
-  const [activeTab, setActiveTab] = useState('journal');
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      return localStorage.getItem('switchbook_cj_active_tab') || 'journal';
+    } catch {
+      return 'journal';
+    }
+  });
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'connected', 'free', 'reserved', 'damaged'
-  const [panelFilter, setPanelFilter] = useState('all');
-  const [categoryFilter, setCategoryFilter] = useState('all');
+
+  const [statusFilter, setStatusFilter] = useState(() => {
+    try {
+      return localStorage.getItem('switchbook_cj_status_filter') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+
+  const [panelFilter, setPanelFilter] = useState(() => {
+    try {
+      return localStorage.getItem('switchbook_cj_panel_filter') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+
+  const [categoryFilter, setCategoryFilter] = useState(() => {
+    try {
+      return localStorage.getItem('switchbook_cj_cat_filter') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('switchbook_cj_active_tab', activeTab);
+    } catch (e) {
+      console.warn('Failed to save cj activeTab', e);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('switchbook_cj_status_filter', statusFilter);
+    } catch (e) {
+      console.warn('Failed to save statusFilter', e);
+    }
+  }, [statusFilter]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('switchbook_cj_panel_filter', panelFilter);
+    } catch (e) {
+      console.warn('Failed to save panelFilter', e);
+    }
+  }, [panelFilter]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('switchbook_cj_cat_filter', categoryFilter);
+    } catch (e) {
+      console.warn('Failed to save categoryFilter', e);
+    }
+  }, [categoryFilter]);
 
   // Label Maker configuration state
   const [labelType, setLabelType] = useState('flags'); // 'flags' | 'wrap' | 'sockets' | 'strip'

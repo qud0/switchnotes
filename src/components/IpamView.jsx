@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Globe,
   Plus,
@@ -60,12 +60,72 @@ export function IpamView({
   const openEditModal = onOpenEditIpModal || onEditIp;
   const openSubnetModal = onOpenEditSubnetModal || onConfigureSubnet;
 
-  const [selectedVlanId, setSelectedVlanId] = useState(vlans[0]?.id || 1);
-  const [activeTab, setActiveTab] = useState('grid'); // 'grid' or 'table'
+  const [selectedVlanId, setSelectedVlanId] = useState(() => {
+    try {
+      const saved = localStorage.getItem('switchbook_ipam_vlan_id');
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed)) return parsed;
+      }
+    } catch {
+      // fallback
+    }
+    return vlans[0]?.id || 1;
+  });
+
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      return localStorage.getItem('switchbook_ipam_tab') || 'grid';
+    } catch {
+      return 'grid';
+    }
+  });
+
   const [isSyncing, setIsSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
+
+  const [typeFilter, setTypeFilter] = useState(() => {
+    try {
+      return localStorage.getItem('switchbook_ipam_type_filter') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+
   const [isVlsmModalOpen, setIsVlsmModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (selectedVlanId) {
+      try {
+        localStorage.setItem('switchbook_ipam_vlan_id', String(selectedVlanId));
+      } catch (e) {
+        console.warn('Failed to save ipam vlan id', e);
+      }
+    }
+  }, [selectedVlanId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('switchbook_ipam_tab', activeTab);
+    } catch (e) {
+      console.warn('Failed to save ipam tab', e);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('switchbook_ipam_type_filter', typeFilter);
+    } catch (e) {
+      console.warn('Failed to save ipam type filter', e);
+    }
+  }, [typeFilter]);
+
+  // If vlans loaded and saved selectedVlanId is not among them, default to first
+  useEffect(() => {
+    if (vlans.length > 0 && !vlans.some(v => v.id === selectedVlanId)) {
+      setSelectedVlanId(vlans[0].id);
+    }
+  }, [vlans, selectedVlanId]);
 
   const handleSyncServers = async () => {
     try {

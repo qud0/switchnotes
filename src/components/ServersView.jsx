@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Cpu,
   Server,
@@ -61,7 +61,22 @@ export function ServersView({
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all'); // 'all', 'hypervisor', 'storage_nas', 'physical'
+
+  const [typeFilter, setTypeFilter] = useState(() => {
+    try {
+      return localStorage.getItem('switchbook_servers_type_filter') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('switchbook_servers_type_filter', typeFilter);
+    } catch (e) {
+      console.warn('Failed to save servers type filter', e);
+    }
+  }, [typeFilter]);
   const [expandedServerIds, setExpandedServerIds] = useState(() => {
     // Expand all by default
     return new Set(servers.map(s => s.id));

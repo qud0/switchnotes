@@ -69,11 +69,73 @@ export default function App() {
   const [notes, setNotes] = useState([]);
   const [servers, setServers] = useState([]);
 
-  const [selectedSwitchId, setSelectedSwitchId] = useState(null);
-  const [selectedPatchPanelId, setSelectedPatchPanelId] = useState(null);
+  const [selectedSwitchId, setSelectedSwitchId] = useState(() => {
+    try {
+      return localStorage.getItem('switchbook_selected_switch_id') || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [selectedPatchPanelId, setSelectedPatchPanelId] = useState(() => {
+    try {
+      return localStorage.getItem('switchbook_selected_pp_id') || null;
+    } catch {
+      return null;
+    }
+  });
+
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
-  const [currentView, setCurrentView] = useState('switches'); // 'switches', 'patchPanels', 'ipam', 'rack', 'topology', 'floorPlans', 'tools', 'notes'
+
+  const [currentView, setCurrentView] = useState(() => {
+    try {
+      const saved = localStorage.getItem('switchbook_active_view');
+      const validViews = [
+        'switches', 'patchPanels', 'ipam', 'rack', 'topology',
+        'floorPlans', 'campus', 'servers', 'cableJournal',
+        'tools', 'notes', 'dashboard', 'audit', 'cheatsheet'
+      ];
+      if (saved && validViews.includes(saved)) {
+        return saved;
+      }
+    } catch (e) {
+      console.warn('Failed to load active view from localStorage', e);
+    }
+    return 'switches';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('switchbook_active_view', currentView);
+    } catch (e) {
+      console.warn('Failed to save active view to localStorage', e);
+    }
+  }, [currentView]);
+
+  useEffect(() => {
+    try {
+      if (selectedSwitchId) {
+        localStorage.setItem('switchbook_selected_switch_id', selectedSwitchId);
+      } else {
+        localStorage.removeItem('switchbook_selected_switch_id');
+      }
+    } catch (e) {
+      console.warn('Failed to save selectedSwitchId to localStorage', e);
+    }
+  }, [selectedSwitchId]);
+
+  useEffect(() => {
+    try {
+      if (selectedPatchPanelId) {
+        localStorage.setItem('switchbook_selected_pp_id', selectedPatchPanelId);
+      } else {
+        localStorage.removeItem('switchbook_selected_pp_id');
+      }
+    } catch (e) {
+      console.warn('Failed to save selectedPatchPanelId to localStorage', e);
+    }
+  }, [selectedPatchPanelId]);
 
   // Device Trace & Live Ping Modal state
   const [isDeviceTraceOpen, setIsDeviceTraceOpen] = useState(false);
@@ -373,11 +435,21 @@ export default function App() {
       setServers(srvList || []);
       setBuildings(bldList || []);
 
-      if (swList.length > 0 && !selectedSwitchId) {
-        setSelectedSwitchId(swList[0].id);
+      if (swList.length > 0) {
+        setSelectedSwitchId(prev => {
+          if (prev && swList.some(s => s.id === prev)) return prev;
+          const saved = localStorage.getItem('switchbook_selected_switch_id');
+          if (saved && swList.some(s => s.id === saved)) return saved;
+          return swList[0].id;
+        });
       }
-      if (ppList.length > 0 && !selectedPatchPanelId) {
-        setSelectedPatchPanelId(ppList[0].id);
+      if (ppList.length > 0) {
+        setSelectedPatchPanelId(prev => {
+          if (prev && ppList.some(p => p.id === prev)) return prev;
+          const saved = localStorage.getItem('switchbook_selected_pp_id');
+          if (saved && ppList.some(p => p.id === saved)) return saved;
+          return ppList[0].id;
+        });
       }
     } catch (err) {
       console.error('Ошибка загрузки данных:', err);

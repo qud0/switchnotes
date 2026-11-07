@@ -39,7 +39,22 @@ export function RackView({
   theme = 'dark'
 }) {
   const toast = useToast();
-  const [showPatchCords, setShowPatchCords] = useState(true);
+  const [showPatchCords, setShowPatchCords] = useState(() => {
+    try {
+      const saved = localStorage.getItem('switchbook_rack_show_cords');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('switchbook_rack_show_cords', String(showPatchCords));
+    } catch (e) {
+      console.warn('Failed to save showPatchCords', e);
+    }
+  }, [showPatchCords]);
   const [isCablingMode, setIsCablingMode] = useState(false);
   const [cablingSource, setCablingSource] = useState(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -97,7 +112,37 @@ export function RackView({
   }, [allDevices]);
 
   const rackNames = Object.keys(rackGroups);
-  const [selectedRack, setSelectedRack] = useState(rackNames[0] || '');
+
+  const [selectedRack, setSelectedRack] = useState(() => {
+    try {
+      const saved = localStorage.getItem('switchbook_selected_rack');
+      if (saved && rackNames.includes(saved)) return saved;
+    } catch {
+      // fallback
+    }
+    return rackNames[0] || '';
+  });
+
+  useEffect(() => {
+    if (selectedRack) {
+      try {
+        localStorage.setItem('switchbook_selected_rack', selectedRack);
+      } catch (e) {
+        console.warn('Failed to save selectedRack', e);
+      }
+    }
+  }, [selectedRack]);
+
+  useEffect(() => {
+    if (rackNames.length > 0 && (!selectedRack || !rackNames.includes(selectedRack))) {
+      const saved = localStorage.getItem('switchbook_selected_rack');
+      if (saved && rackNames.includes(saved)) {
+        setSelectedRack(saved);
+      } else {
+        setSelectedRack(rackNames[0]);
+      }
+    }
+  }, [rackNames, selectedRack]);
 
   // Active devices in this rack
   const currentRackDevices = rackGroups[selectedRack] || [];
