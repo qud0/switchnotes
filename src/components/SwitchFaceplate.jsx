@@ -48,6 +48,7 @@ export function SwitchFaceplate({
   onOpenMacDiscovery,
   onOpenWebSsh,
   onOpenTroubleshoot,
+  onBackToList,
   theme = 'dark'
 }) {
   const [activeTab, setActiveTab] = useState('faceplate'); // 'faceplate' or 'table'
@@ -232,6 +233,29 @@ export function SwitchFaceplate({
           ? 'bg-white border-slate-200 text-slate-800'
           : 'bg-slate-900/90 border-slate-800 text-slate-100 backdrop-blur-md'
       }`}>
+        {/* Breadcrumbs Navigation */}
+        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mb-3 select-none flex-wrap">
+          <button
+            onClick={() => onBackToList?.()}
+            className="hover:text-blue-500 font-medium flex items-center gap-1 cursor-pointer transition-colors"
+            title="Вернуться к списку коммутаторов"
+          >
+            <span>Коммутаторы</span>
+          </button>
+          <span>/</span>
+          {switchData.location && (
+            <>
+              <span className="text-slate-600 dark:text-slate-300 font-medium">
+                {switchData.location}
+              </span>
+              <span>/</span>
+            </>
+          )}
+          <span className="font-bold text-slate-900 dark:text-white font-mono">
+            {switchData.name}
+          </span>
+        </div>
+
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           {/* Switch Info */}
           <div className="flex items-start gap-4">
@@ -799,6 +823,15 @@ export function SwitchFaceplate({
         />
       ) : (
         <>
+          {/* Mobile scroll hint */}
+          <div className="lg:hidden flex items-center justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400 mb-2 px-1">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              Шасси 19" (960px)
+            </span>
+            <span className="text-[10px]">↔ Прокрутите для просмотра всех портов</span>
+          </div>
+
           {/* Switch Physical 19" Rackmount Front Panel Chassis */}
           <div className="relative overflow-x-auto pb-4">
             <div className={`min-w-[960px] border-2 rounded-xl shadow-2xl p-4 flex items-center relative select-none transition-colors ${

@@ -194,12 +194,12 @@ export function PortTable({
       </div>
 
       {/* Table */}
-      <div className={`overflow-x-auto rounded-xl border ${
+      <div className={`overflow-x-auto max-h-[75vh] overflow-y-auto rounded-xl border ${
         isLight ? 'border-slate-200' : 'border-slate-800'
       }`}>
         <table className="w-full text-left text-xs">
-          <thead className={`border-b font-mono font-semibold uppercase tracking-wider text-[11px] ${
-            isLight ? 'bg-slate-50 border-slate-200 text-slate-600' : 'bg-slate-950/70 border-slate-800 text-slate-400'
+          <thead className={`sticky top-0 z-10 border-b font-mono font-semibold uppercase tracking-wider text-[11px] shadow-xs ${
+            isLight ? 'bg-slate-50/95 border-slate-200 text-slate-700 backdrop-blur-md' : 'bg-slate-950/95 border-slate-800 text-slate-300 backdrop-blur-md'
           }`}>
             <tr>
               <th onClick={() => handleSort('number')} className="py-2.5 px-3 cursor-pointer hover:text-blue-500 transition-colors select-none">

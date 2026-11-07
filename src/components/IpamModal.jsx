@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, Globe, Sparkles, MapPin, HardDrive, Shield } from 'lucide-react';
 import { findNextFreeIp } from '../utils/ipamUtils';
+import { useToast } from '../context/ToastContext';
 
 const DEVICE_TYPES = [
   { id: 'workstation', label: 'Рабочая станция / ПК' },
@@ -25,6 +26,7 @@ export function IpamModal({
   onSave,
   theme = 'dark'
 }) {
+  const toast = useToast();
   if (!isOpen) return null;
 
   const [ip, setIp] = useState('');
@@ -89,17 +91,17 @@ export function IpamModal({
       if (nextIp) {
         setIp(nextIp);
       } else {
-        alert('В данной подсети не найдено свободных IP-адресов');
+        toast.warning('В данной подсети не найдено свободных IP-адресов');
       }
     } else {
-      alert('Для выбранного VLAN не задана подсеть');
+      toast.warning('Для выбранного VLAN не задана подсеть');
     }
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!ip.trim()) {
-      alert('Укажите IP-адрес');
+      toast.warning('Укажите IP-адрес');
       return;
     }
 

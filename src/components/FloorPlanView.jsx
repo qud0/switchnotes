@@ -10,6 +10,9 @@ import {
 } from 'lucide-react';
 import { api } from '../api';
 import { exportSvgToFile, exportSvgToPng, printDiagram } from '../utils/exportGraphics';
+import { calculatePointRssi, renderWifiHeatmap } from '../utils/wifiHeatmap';
+import { useToast } from '../context/ToastContext';
+import { EmptyState } from './EmptyState';
 
 export default function FloorPlanView({ 
   floorPlans = [], 
@@ -21,7 +24,9 @@ export default function FloorPlanView({
   theme = 'dark'
 }) {
   const isLight = theme === 'light';
+  const toast = useToast();
   const svgRef = useRef(null);
+  const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
 
   const [selectedFloorId, setSelectedFloorId] = useState(floorPlans[0]?.id || 'floor-2');
@@ -30,6 +35,13 @@ export default function FloorPlanView({
   const [showCables, setShowCables] = useState(true);
   const [filterType, setFilterType] = useState('all'); // all, pc, voip, printer, camera, wifi
   const [hoveredOutletId, setHoveredOutletId] = useState(null);
+
+  // Wi-Fi Heatmap Simulation state
+  const [showWifiHeatmap, setShowWifiHeatmap] = useState(false);
+  const [wifiFrequency, setWifiFrequency] = useState('5ghz'); // '5ghz' | '2.4ghz'
+  const [wifiTxPower, setWifiTxPower] = useState(20); // 14, 20, 24 dBm
+  const [wifiWallMaterial, setWifiWallMaterial] = useState('drywall'); // 'drywall' | 'brick' | 'concrete'
+  const [heatmapProbe, setHeatmapProbe] = useState(null); // { x, y, rssi, apName }
 
   // Editor mode state
   const [isEditMode, setIsEditMode] = useState(false);
@@ -114,6 +126,63 @@ export default function FloorPlanView({
       isDirectBinding
     };
   }, [selectedOutlet, currentPatchPanel, switches]);
+
+  // Wi-Fi Access Points list
+  const wifiAps = useMemo(() => {
+    if (!currentFloor?.outlets) return [];
+    return currentFloor.outlets.filter(o => o.type === 'wifi');
+  }, [currentFloor]);
+
+  const wallLossDb = wifiWallMaterial === 'concrete' ? 14 : wifiWallMaterial === 'brick' ? 9 : 4;
+  const freqMhz = wifiFrequency === '2.4ghz' ? 2412 : 5180;
+
+  // Render Wi-Fi Heatmap to Canvas
+  useEffect(() => {
+    if (!showWifiHeatmap || !canvasRef.current) return;
+    let effectiveAps = wifiAps;
+    if (effectiveAps.length === 0 && (currentFloor?.rooms || []).length > 0) {
+      effectiveAps = [
+        {
+          id: 'v-ap-1',
+          x: currentFloor.rooms[0].x + currentFloor.rooms[0].w / 2,
+          y: currentFloor.rooms[0].y + currentFloor.rooms[0].h / 2,
+          name: 'Виртуальная AP (Демо)'
+        }
+      ];
+    }
+    if (effectiveAps.length > 0) {
+      renderWifiHeatmap({
+        canvas: canvasRef.current,
+        aps: effectiveAps,
+        rooms: currentFloor?.rooms || [],
+        txPowerDb: wifiTxPower,
+        freqMhz,
+        wallLossDb,
+        cutoffThreshold: -85,
+        width: 960,
+        height: 640,
+        step: 10
+      });
+    }
+  }, [showWifiHeatmap, wifiAps, currentFloor?.rooms, wifiTxPower, freqMhz, wallLossDb]);
+
+  const handleAddQuickWifiAp = () => {
+    const centerRoom = (currentFloor?.rooms || [])[0];
+    const newAp = {
+      id: `outlet-wifi-${Date.now()}`,
+      name: `Точка Wi-Fi (U6-Pro #${wifiAps.length + 1})`,
+      type: 'wifi',
+      x: centerRoom ? Math.round(centerRoom.x + centerRoom.w / 2) : 480,
+      y: centerRoom ? Math.round(centerRoom.y + centerRoom.h / 2) : 320,
+      socket: `AP-WIFI-${wifiAps.length + 1}`,
+      cableCategory: 'Cat.6 UTP (1-10 Gbps)'
+    };
+    setCurrentFloor(prev => ({
+      ...prev,
+      outlets: [...(prev.outlets || []), newAp]
+    }));
+    setHasUnsavedChanges(true);
+  };
 
   // Convert client mouse event to SVG coordinate space
   const getSvgCoordinates = (e) => {
@@ -255,8 +324,45 @@ export default function FloorPlanView({
   };
 
   const handleMouseMoveCanvas = (e) => {
-    if (!draggingEntity || !isEditMode) return;
     const coords = getSvgCoordinates(e);
+
+    // Live RSSI probe meter calculation
+    if (showWifiHeatmap && coords) {
+      let maxRssi = -120;
+      let closestAp = null;
+      let minD = 999999;
+      const effectiveAps = wifiAps.length > 0 ? wifiAps : (currentFloor?.rooms?.length > 0 ? [{
+        id: 'v-ap-1',
+        x: currentFloor.rooms[0].x + currentFloor.rooms[0].w / 2,
+        y: currentFloor.rooms[0].y + currentFloor.rooms[0].h / 2,
+        name: 'Виртуальная AP (Демо)'
+      }] : []);
+
+      for (const ap of effectiveAps) {
+        const d = Math.hypot(coords.x - ap.x, coords.y - ap.y);
+        if (d < minD) { minD = d; closestAp = ap; }
+        const r = calculatePointRssi({
+          apX: ap.x,
+          apY: ap.y,
+          targetX: coords.x,
+          targetY: coords.y,
+          txPowerDb: wifiTxPower,
+          freqMhz,
+          wallLossDb,
+          rooms: currentFloor?.rooms || []
+        });
+        if (r > maxRssi) maxRssi = r;
+      }
+
+      setHeatmapProbe({
+        x: coords.x,
+        y: coords.y,
+        rssi: maxRssi,
+        apName: closestAp?.name || closestAp?.socket || 'Wi-Fi AP'
+      });
+    }
+
+    if (!draggingEntity || !isEditMode || !coords) return;
     const dx = coords.x - draggingEntity.startX;
     const dy = coords.y - draggingEntity.startY;
 
@@ -320,10 +426,11 @@ export default function FloorPlanView({
       await api.updateFloorPlan(currentFloor.id, currentFloor);
       setHasUnsavedChanges(false);
       setSaveSuccess(true);
+      toast.success('План помещения сохранен');
       setTimeout(() => setSaveSuccess(false), 3000);
       if (onReloadFloorPlans) onReloadFloorPlans();
     } catch (err) {
-      alert(`Ошибка сохранения: ${err.message}`);
+      toast.error(`Ошибка сохранения: ${err.message}`);
     } finally {
       setSavingPlan(false);
     }
@@ -447,9 +554,12 @@ export default function FloorPlanView({
 
   if (!currentFloor) {
     return (
-      <div className={`p-8 text-center rounded-2xl border ${isLight ? 'bg-white border-slate-200 text-slate-500' : 'bg-slate-900 border-slate-800 text-slate-400'}`}>
-        Планы этажей не найдены.
-      </div>
+      <EmptyState
+        theme={theme}
+        icon={MapPin}
+        title="Планы этажей не найдены"
+        description="Создайте план этажа или здания для интерактивной привязки розеток, рабочих мест, точек Wi-Fi и кабельных трасс."
+      />
     );
   }
 
@@ -540,6 +650,22 @@ export default function FloorPlanView({
             >
               {showCables ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
               <span>Кабели</span>
+            </button>
+
+            {/* Wi-Fi Heatmap Simulator Toggle */}
+            <button
+              onClick={() => setShowWifiHeatmap(!showWifiHeatmap)}
+              className={`h-9 px-3.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer ${
+                showWifiHeatmap
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20 ring-2 ring-emerald-400'
+                  : isLight
+                  ? 'bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200'
+                  : 'bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700'
+              }`}
+              title="Моделирование радиопокрытия точек доступа Wi-Fi (2.4 / 5 ГГц)"
+            >
+              <Radio className={`w-3.5 h-3.5 ${showWifiHeatmap ? 'animate-pulse text-emerald-200' : 'text-emerald-500'}`} />
+              <span>{showWifiHeatmap ? 'Wi-Fi Heatmap: Вкл' : 'Wi-Fi Heatmap'}</span>
             </button>
 
             {/* Toggle Edit Mode */}
@@ -777,6 +903,92 @@ export default function FloorPlanView({
         )}
       </div>
 
+      {/* Wi-Fi Heatmap Controls Bar */}
+      {showWifiHeatmap && (
+        <div className={`p-3 rounded-2xl border flex flex-wrap items-center justify-between gap-3 text-xs transition-colors animate-in fade-in duration-200 ${
+          isLight ? 'bg-emerald-50/80 border-emerald-200 text-slate-800' : 'bg-slate-900 border-emerald-500/30 text-slate-200'
+        }`}>
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-slate-500">Диапазон:</span>
+              <div className="flex items-center p-0.5 rounded-lg border border-slate-700 bg-slate-950">
+                <button
+                  onClick={() => setWifiFrequency('5ghz')}
+                  className={`h-6 px-2.5 rounded text-[11px] font-semibold cursor-pointer transition-colors ${
+                    wifiFrequency === '5ghz' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  5 ГГц (Скорость)
+                </button>
+                <button
+                  onClick={() => setWifiFrequency('2.4ghz')}
+                  className={`h-6 px-2.5 rounded text-[11px] font-semibold cursor-pointer transition-colors ${
+                    wifiFrequency === '2.4ghz' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  2.4 ГГц (Дальность)
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-slate-500">Мощность Tx:</span>
+              <select
+                value={wifiTxPower}
+                onChange={(e) => setWifiTxPower(parseInt(e.target.value))}
+                className="h-7 px-2 rounded-lg bg-slate-950 border border-slate-700 text-xs font-mono text-white outline-none cursor-pointer"
+              >
+                <option value={14}>14 dBm (25 мВт - Low)</option>
+                <option value={20}>20 dBm (100 мВт - Standard)</option>
+                <option value={24}>24 dBm (250 мВт - High)</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-slate-500">Стены:</span>
+              <select
+                value={wifiWallMaterial}
+                onChange={(e) => setWifiWallMaterial(e.target.value)}
+                className="h-7 px-2 rounded-lg bg-slate-950 border border-slate-700 text-xs text-white outline-none cursor-pointer"
+              >
+                <option value="drywall">Гипсокартон / Стекло (-4 dB)</option>
+                <option value="brick">Кирпич / Газобетон (-9 dB)</option>
+                <option value="concrete">Железобетон (-14 dB)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Live Probe Output */}
+            {heatmapProbe ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950 border border-emerald-500/40 text-[11px] font-mono">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-slate-400">Сигнал в точке:</span>
+                <strong className={heatmapProbe.rssi >= -65 ? 'text-emerald-400' : heatmapProbe.rssi >= -75 ? 'text-amber-400' : 'text-rose-400'}>
+                  {heatmapProbe.rssi} dBm
+                </strong>
+                <span className="text-slate-500 hidden sm:inline">({heatmapProbe.apName})</span>
+              </div>
+            ) : (
+              <span className="text-[11px] text-slate-400 italic hidden sm:inline">
+                Наведите курсор на план для замера сигнала
+              </span>
+            )}
+
+            {/* Quick add AP button if none */}
+            {wifiAps.length === 0 && (
+              <button
+                onClick={handleAddQuickWifiAp}
+                className="h-7 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Добавить AP на этаж</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Main Interactive SVG Canvas and Details Drawer */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* SVG Floor Map Area (3 cols) */}
@@ -785,6 +997,20 @@ export default function FloorPlanView({
             ? 'bg-slate-50 border-slate-200 shadow-slate-200/50'
             : 'bg-slate-950/90 border-slate-800 shadow-xl'
         }`}>
+          {/* Wi-Fi Heatmap Canvas Layer */}
+          {showWifiHeatmap && (
+            <canvas
+              ref={canvasRef}
+              width={960}
+              height={640}
+              className="absolute inset-0 w-full h-full pointer-events-none z-10 transition-opacity"
+              style={{
+                mixBlendMode: isLight ? 'multiply' : 'screen',
+                opacity: isLight ? 0.72 : 0.85
+              }}
+            />
+          )}
+
           <svg
             ref={svgRef}
             viewBox="0 0 960 640"
@@ -891,6 +1117,15 @@ export default function FloorPlanView({
                 </g>
               );
             })}
+
+            {/* Wi-Fi Access Points Wave Pulses */}
+            {showWifiHeatmap && wifiAps.map(ap => (
+              <g key={`ap-pulse-${ap.id}`} className="pointer-events-none">
+                <circle cx={ap.x} cy={ap.y} r="25" fill="none" stroke="#22c55e" strokeWidth="2" strokeDasharray="4 4" opacity="0.8" className="animate-ping origin-center" />
+                <circle cx={ap.x} cy={ap.y} r="60" fill="none" stroke="#22c55e" strokeWidth="1" strokeDasharray="5 5" opacity="0.45" />
+                <circle cx={ap.x} cy={ap.y} r="120" fill="none" stroke="#eab308" strokeWidth="1" strokeDasharray="6 6" opacity="0.25" />
+              </g>
+            ))}
 
             {/* Cable Paths from Outlets to Cross Cabinet */}
             {showCables && filteredOutlets.map((outlet) => {

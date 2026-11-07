@@ -28,6 +28,8 @@ import {
   Download
 } from 'lucide-react';
 import { api } from '../api';
+import { useToast } from '../context/ToastContext';
+import { EmptyState } from './EmptyState';
 
 const VENDOR_OPTIONS = [
   'Dell',
@@ -55,6 +57,7 @@ export function ServersView({
   theme = 'dark'
 }) {
   const isLight = theme === 'light';
+  const toast = useToast();
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -134,11 +137,10 @@ export function ServersView({
     try {
       setIsSyncingIpam(true);
       const res = await api.syncServersToIpam();
-      setSyncMessage(`Синхронизировано: ${res.createdCount} новых, ${res.updatedCount} обновлено (всего ${res.total} в IPAM)`);
-      setTimeout(() => setSyncMessage(null), 4500);
+      toast.success(`Синхронизировано: ${res.createdCount} новых, ${res.updatedCount} обновлено (всего ${res.total} в IPAM)`);
       onReloadServers();
     } catch (err) {
-      alert(`Ошибка синхронизации с IPAM: ${err.message}`);
+      toast.error(`Ошибка синхронизации с IPAM: ${err.message}`);
     } finally {
       setIsSyncingIpam(false);
     }
@@ -299,9 +301,10 @@ export function ServersView({
     }
     try {
       await api.deleteServer(srv.id);
+      toast.success(`Сервер «${srv.name}» удален`);
       onReloadServers();
     } catch (err) {
-      alert(`Ошибка удаления: ${err.message}`);
+      toast.error(`Ошибка удаления: ${err.message}`);
     }
   };
 
@@ -324,9 +327,10 @@ export function ServersView({
     }
     try {
       await api.deleteVm(srv.id, vm.vmid);
+      toast.success(`ВМ «${vm.name}» удалена`);
       onReloadServers();
     } catch (err) {
-      alert(`Ошибка удаления ВМ: ${err.message}`);
+      toast.error(`Ошибка удаления ВМ: ${err.message}`);
     }
   };
 
@@ -572,26 +576,21 @@ export function ServersView({
 
       {/* 3. Server List */}
       {filteredServers.length === 0 ? (
-        <div className={`p-12 text-center border border-dashed rounded-2xl ${
-          isLight ? 'bg-white border-slate-300' : 'bg-slate-900/30 border-slate-800'
-        }`}>
-          <Cpu className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-          <h3 className="text-base font-semibold text-slate-700 dark:text-slate-300">
-            {searchQuery ? 'Ничего не найдено' : 'Серверы не добавлены'}
-          </h3>
-          <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-            {searchQuery
+        <EmptyState
+          theme={theme}
+          icon={Cpu}
+          title={searchQuery ? 'Ничего не найдено' : 'Серверы не добавлены'}
+          description={
+            searchQuery
               ? 'Попробуйте изменить параметры поиска или фильтр по типу устройства.'
-              : 'Добавьте первый хост виртуализации (Proxmox VE, VMware ESXi, Hyper-V) или СХД для учета сетевых интерфейсов и виртуальных машин.'}
-          </p>
-          <button
-            onClick={handleOpenNewServer}
-            className="mt-4 h-9 px-4 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-xl inline-flex items-center gap-1.5 cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            Добавить сервер
-          </button>
-        </div>
+              : 'Добавьте первый хост виртуализации (Proxmox VE, VMware ESXi, Hyper-V) или СХД для учета сетевых интерфейсов и виртуальных машин.'
+          }
+          action={{
+            label: 'Добавить сервер',
+            icon: Plus,
+            onClick: handleOpenNewServer
+          }}
+        />
       ) : (
         <div className="space-y-4">
           {filteredServers.map(srv => {
@@ -1136,6 +1135,7 @@ export function ServersView({
 // --- SERVER EDIT MODAL ---
 function ServerEditModal({ server, switches = [], onClose, onSaved, theme = 'dark' }) {
   const isLight = theme === 'light';
+  const toast = useToast();
   const isEditing = Boolean(server?.id);
 
   const [activeTab, setActiveTab] = useState('general'); // 'general', 'nics', 'bridges'
@@ -1277,7 +1277,7 @@ function ServerEditModal({ server, switches = [], onClose, onSaved, theme = 'dar
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      alert('Укажите имя сервера');
+      toast.warning('Укажите имя сервера');
       return;
     }
 
@@ -1285,12 +1285,14 @@ function ServerEditModal({ server, switches = [], onClose, onSaved, theme = 'dar
       setIsSubmitting(true);
       if (isEditing) {
         await api.updateServer(server.id, formData);
+        toast.success(`Сервер «${formData.name}» обновлен`);
       } else {
         await api.createServer(formData);
+        toast.success(`Сервер «${formData.name}» создан`);
       }
       onSaved();
     } catch (err) {
-      alert(`Ошибка сохранения: ${err.message}`);
+      toast.error(`Ошибка сохранения: ${err.message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -1974,6 +1976,7 @@ function ServerEditModal({ server, switches = [], onClose, onSaved, theme = 'dar
 // --- VM EDIT MODAL ---
 function VmEditModal({ server, vm, vlans = [], onClose, onSaved, theme = 'dark' }) {
   const isLight = theme === 'light';
+  const toast = useToast();
   const isEditing = Boolean(vm);
 
   const [formData, setFormData] = useState({
@@ -2012,7 +2015,7 @@ function VmEditModal({ server, vm, vlans = [], onClose, onSaved, theme = 'dark' 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      alert('Укажите имя виртуальной машины');
+      toast.warning('Укажите имя виртуальной машины');
       return;
     }
 
@@ -2020,12 +2023,14 @@ function VmEditModal({ server, vm, vlans = [], onClose, onSaved, theme = 'dark' 
       setIsSubmitting(true);
       if (isEditing) {
         await api.updateVm(server.id, vm.vmid, formData);
+        toast.success(`ВМ «${formData.name}» обновлена`);
       } else {
         await api.addVm(server.id, formData);
+        toast.success(`ВМ «${formData.name}» создана`);
       }
       onSaved();
     } catch (err) {
-      alert(`Ошибка сохранения ВМ: ${err.message}`);
+      toast.error(`Ошибка сохранения ВМ: ${err.message}`);
     } finally {
       setIsSubmitting(false);
     }

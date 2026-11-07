@@ -19,7 +19,8 @@ import { IpamSubnetModal } from './components/IpamSubnetModal';
 import { AlertsModal } from './components/AlertsModal';
 import { runNetworkAudit } from './utils/networkAudit';
 import { downloadCsv } from './utils/exportUtils';
-import { Server, Plus, HardDrive, RefreshCw, Layers, Cable, Globe, MapPin, Activity, Wrench, BookOpen, Factory, BookMarked, AlertTriangle, Download } from 'lucide-react';
+import { Server, Plus, HardDrive, RefreshCw, Layers, Cable, Globe, MapPin, Activity, Wrench, BookOpen, Factory, BookMarked, AlertTriangle, Download, Search } from 'lucide-react';
+import { EmptyState } from './components/EmptyState';
 
 // Code-splitting for heavy tab views:
 const RackView = lazy(() => import('./components/RackView').then(m => ({ default: m.RackView })));
@@ -43,14 +44,21 @@ const MacDiscoveryModal = lazy(() => import('./components/MacDiscoveryModal'));
 const WebSshModal = lazy(() => import('./components/WebSshModal'));
 const TroubleshooterModal = lazy(() => import('./components/TroubleshooterModal'));
 const ActiveDirectoryModal = lazy(() => import('./components/ActiveDirectoryModal').then(m => ({ default: m.ActiveDirectoryModal })));
+const PoeBudgetModal = lazy(() => import('./components/PoeBudgetModal').then(m => ({ default: m.PoeBudgetModal })));
+const NetworkDiscoveryModal = lazy(() => import('./components/NetworkDiscoveryModal').then(m => ({ default: m.NetworkDiscoveryModal })));
+const ConfigTemplateModal = lazy(() => import('./components/ConfigTemplateModal').then(m => ({ default: m.ConfigTemplateModal })));
 import LoginModal from './components/LoginModal';
 import UsersModal from './components/UsersModal';
+import { useToast } from './context/ToastContext';
+import { CommandPalette } from './components/CommandPalette';
 import { useAuth } from './context/AuthContext';
 
 export default function App() {
   const { canEdit, isAdmin, role } = useAuth();
+  const toast = useToast();
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isUsersModalOpen, setIsUsersModalOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 
   const [switches, setSwitches] = useState([]);
   const [vlans, setVlans] = useState([]);
@@ -90,6 +98,12 @@ export default function App() {
   const [isSubnetModalOpen, setIsSubnetModalOpen] = useState(false);
   const [editingSubnetVlan, setEditingSubnetVlan] = useState(null);
 
+  // New features modals state: PoE, Network Discovery, Config Templates
+  const [isPoeModalOpen, setIsPoeModalOpen] = useState(false);
+  const [poeModalSwitchId, setPoeModalSwitchId] = useState(null);
+  const [isDiscoveryModalOpen, setIsDiscoveryModalOpen] = useState(false);
+  const [isConfigTemplatesModalOpen, setIsConfigTemplatesModalOpen] = useState(false);
+
   // Zoom scale state: 70% to 150%
   const [zoomLevel, setZoomLevel] = useState(() => {
     return parseInt(localStorage.getItem('switchbook_zoom')) || 100;
@@ -112,6 +126,9 @@ export default function App() {
       } else if ((e.ctrlKey || e.metaKey) && e.key === '0') {
         e.preventDefault();
         handleZoomChange(100);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen(prev => !prev);
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !e.shiftKey) {
         e.preventDefault();
         setIsDeviceTraceOpen(true);
@@ -121,9 +138,14 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [zoomLevel]);
 
-  // Theme state: dark / light
+  // Theme state: dark / light (with prefers-color-scheme detection)
   const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('switchbook_theme') || 'dark';
+    const saved = localStorage.getItem('switchbook_theme');
+    if (saved) return saved;
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: light)').matches) {
+      return 'light';
+    }
+    return 'dark';
   });
 
   const toggleTheme = () => {
@@ -143,6 +165,28 @@ export default function App() {
       document.documentElement.classList.remove('dark');
     }
   }, [theme]);
+
+  // Dynamic document.title reflecting active view
+  useEffect(() => {
+    const VIEW_TITLES = {
+      dashboard: 'Дашборд сети',
+      switches: 'Коммутаторы',
+      servers: 'Серверы & ВМ',
+      patchPanels: 'Патч-панели',
+      cables: 'Кабели & Маркировка',
+      ipam: 'IPAM подсети',
+      rack: 'Стойка 42U',
+      topology: 'Топология сети',
+      campus: 'Карта завода',
+      floorPlans: 'Планы этажей',
+      cheatSheet: 'Шпаргалка CLI',
+      tools: 'Сетевые утилиты',
+      notes: 'Заметки инженера',
+      history: 'История изменений'
+    };
+    const title = VIEW_TITLES[currentView] || 'Управление сетью';
+    document.title = `SwitchBook — ${title}`;
+  }, [currentView]);
 
   // Modals state
   const [loadError, setLoadError] = useState(null);
@@ -528,7 +572,7 @@ export default function App() {
       setIsSwitchModalOpen(false);
       setEditingSwitch(null);
     } catch (err) {
-      alert(`Ошибка: ${err.message}`);
+      toast.error(`Ошибка: ${err.message}`);
       throw err;
     }
   };
@@ -548,7 +592,7 @@ export default function App() {
       const pps = await api.getPatchPanels();
       setPatchPanels(pps);
     } catch (err) {
-      alert(`Ошибка удаления: ${err.message}`);
+      toast.error(`Ошибка удаления: ${err.message}`);
     }
   };
 
@@ -588,7 +632,7 @@ export default function App() {
       }
       setDrawerOpen(false);
     } catch (err) {
-      alert(`Ошибка сохранения портов: ${err.message}`);
+      toast.error(`Ошибка сохранения портов: ${err.message}`);
     }
   };
 
@@ -615,7 +659,7 @@ export default function App() {
       }
       setIsPatchPanelModalOpen(false);
     } catch (err) {
-      alert(`Ошибка сохранения патч-панели: ${err.message}`);
+      toast.error(`Ошибка сохранения патч-панели: ${err.message}`);
     }
   };
 
@@ -634,7 +678,7 @@ export default function App() {
       const swList = await api.getSwitches();
       setSwitches(swList);
     } catch (err) {
-      alert(`Ошибка удаления: ${err.message}`);
+      toast.error(`Ошибка удаления: ${err.message}`);
     }
   };
 
@@ -651,7 +695,7 @@ export default function App() {
       await fetchData();
       setIsPatchPortDrawerOpen(false);
     } catch (err) {
-      alert(`Ошибка обновления порта патч-панели: ${err.message}`);
+      toast.error(`Ошибка обновления порта патч-панели: ${err.message}`);
     }
   };
 
@@ -694,7 +738,7 @@ export default function App() {
       }
       setIsIpamModalOpen(false);
     } catch (err) {
-      alert(`Ошибка сохранения IP: ${err.message}`);
+      toast.error(`Ошибка сохранения IP: ${err.message}`);
     }
   };
 
@@ -703,7 +747,7 @@ export default function App() {
       await api.deleteIpAllocation(id);
       setIpAllocations(prev => prev.filter(item => item.id !== id));
     } catch (err) {
-      alert(`Ошибка удаления IP: ${err.message}`);
+      toast.error(`Ошибка удаления IP: ${err.message}`);
     }
   };
 
@@ -723,7 +767,7 @@ export default function App() {
       await fetchData();
       setIsSubnetModalOpen(false);
     } catch (err) {
-      alert(`Ошибка сохранения подсети: ${err.message}`);
+      toast.error(`Ошибка сохранения подсети: ${err.message}`);
     }
   };
 
@@ -778,6 +822,12 @@ export default function App() {
           setTroubleshootSwitchId(swId || selectedSwitchId || switches[0]?.id);
           setIsTroubleshootOpen(true);
         }}
+        onOpenPoeModal={(swId) => {
+          setPoeModalSwitchId(swId || selectedSwitchId || switches[0]?.id);
+          setIsPoeModalOpen(true);
+        }}
+        onOpenDiscoveryModal={() => setIsDiscoveryModalOpen(true)}
+        onOpenConfigTemplatesModal={() => setIsConfigTemplatesModalOpen(true)}
         unreadAlertsCount={unreadAlertsCount}
         auditIssuesCount={auditSummary.counts.total}
         auditHealthScore={auditSummary.healthScore}
@@ -815,9 +865,13 @@ export default function App() {
           </div>
         )}
         <Suspense fallback={
-          <div className="flex flex-col items-center justify-center min-h-[400px] gap-3 text-slate-400">
-            <RefreshCw className="w-8 h-8 animate-spin text-blue-500" />
-            <span className="text-sm font-medium">Загрузка модуля...</span>
+          <div className="space-y-4 animate-pulse py-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className={`h-28 rounded-2xl border ${isLight ? 'bg-slate-200/70 border-slate-300' : 'bg-slate-900/60 border-slate-800'}`} />
+              ))}
+            </div>
+            <div className={`h-96 rounded-2xl border ${isLight ? 'bg-slate-200/70 border-slate-300' : 'bg-slate-900/60 border-slate-800'}`} />
           </div>
         }>
           {currentView === 'dashboard' ? (
@@ -834,6 +888,10 @@ export default function App() {
             onOpenMacDiscovery={(sw) => {
               setMacDiscoverySwitch(sw);
               setIsMacDiscoveryOpen(true);
+            }}
+            onOpenPoeModal={(swId) => {
+              setPoeModalSwitchId(swId || switches[0]?.id);
+              setIsPoeModalOpen(true);
             }}
             theme={theme}
           />
@@ -865,6 +923,7 @@ export default function App() {
             onSelectServer={(id) => {
               setCurrentView('servers');
             }}
+            onReloadData={fetchData}
             onOpenAdModal={() => setIsAdModalOpen(true)}
             theme={theme}
           />
@@ -1019,17 +1078,13 @@ export default function App() {
                   <span className="text-xs">Загрузка данных...</span>
                 </div>
               ) : filteredPatchPanels.length === 0 ? (
-                <div className={`p-8 text-center border border-dashed rounded-xl ${
-                  isLight ? 'border-slate-300 bg-white' : 'border-slate-800 bg-slate-900/30'
-                }`}>
-                  <Layers className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {searchQuery ? 'Ничего не найдено' : 'Нет патч-панелей'}
-                  </p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {searchQuery ? 'Попробуйте изменить поисковый запрос' : 'Добавьте первую панель'}
-                  </p>
-                </div>
+                <EmptyState
+                  compact
+                  theme={theme}
+                  icon={searchQuery ? Search : Layers}
+                  title={searchQuery ? 'Ничего не найдено' : 'Нет патч-панелей'}
+                  description={searchQuery ? 'Попробуйте изменить поисковый запрос' : 'Добавьте первую панель'}
+                />
               ) : (
                 <div className="space-y-2.5 max-h-[calc(100vh-12rem)] overflow-y-auto pr-1">
                   {filteredPatchPanels.map(pp => (
@@ -1056,27 +1111,21 @@ export default function App() {
                   onEditPanel={handleEditPatchPanel}
                   onDeletePanel={handleDeletePatchPanel}
                   onJumpToSwitch={handleJumpToSwitch}
+                  onBackToList={() => setSelectedPatchPanelId(null)}
                   theme={theme}
                 />
               ) : (
-                <div className={`h-96 flex flex-col items-center justify-center border border-dashed rounded-2xl p-8 text-center ${
-                  isLight ? 'bg-white border-slate-300' : 'bg-slate-900/20 border-slate-800'
-                }`}>
-                  <Cable className="w-12 h-12 text-slate-400 mb-3" />
-                  <h3 className="text-base font-semibold text-slate-700 dark:text-slate-300">
-                    Патч-панель не выбрана
-                  </h3>
-                  <p className="text-xs text-slate-500 max-w-sm mt-1">
-                    Выберите панель из списка слева или добавьте новую для визуализации СКС и кабельного журнала розеток.
-                  </p>
-                  <button
-                    onClick={handleOpenNewPatchPanel}
-                    className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-lg flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Добавить патч-панель
-                  </button>
-                </div>
+                <EmptyState
+                  theme={theme}
+                  icon={Cable}
+                  title="Патч-панель не выбрана"
+                  description="Выберите панель из списка слева или добавьте новую для визуализации СКС и кабельного журнала розеток."
+                  action={canEdit ? {
+                    label: 'Добавить патч-панель',
+                    icon: Plus,
+                    onClick: handleOpenNewPatchPanel
+                  } : null}
+                />
               )}
             </section>
           </div>
@@ -1114,17 +1163,13 @@ export default function App() {
                   <span className="text-xs">Загрузка данных...</span>
                 </div>
               ) : filteredSwitches.length === 0 ? (
-                <div className={`p-8 text-center border border-dashed rounded-xl ${
-                  isLight ? 'border-slate-300 bg-white' : 'border-slate-800 bg-slate-900/30'
-                }`}>
-                  <Server className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {searchQuery ? 'Ничего не найдено' : 'Нет коммутаторов'}
-                  </p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {searchQuery ? 'Попробуйте изменить поисковый запрос' : 'Добавьте первое устройство'}
-                  </p>
-                </div>
+                <EmptyState
+                  compact
+                  theme={theme}
+                  icon={searchQuery ? Search : Server}
+                  title={searchQuery ? 'Ничего не найдено' : 'Нет коммутаторов'}
+                  description={searchQuery ? 'Попробуйте изменить поисковый запрос' : 'Добавьте первое устройство'}
+                />
               ) : (
                 <div className="space-y-2.5 max-h-[calc(100vh-12rem)] overflow-y-auto pr-1">
                   {filteredSwitches.map(sw => (
@@ -1141,6 +1186,10 @@ export default function App() {
                       onOpenTroubleshoot={(swId) => {
                         setTroubleshootSwitchId(swId);
                         setIsTroubleshootOpen(true);
+                      }}
+                      onOpenPoeModal={(swId) => {
+                        setPoeModalSwitchId(swId);
+                        setIsPoeModalOpen(true);
                       }}
                       theme={theme}
                     />
@@ -1181,27 +1230,21 @@ export default function App() {
                     setTroubleshootSwitchId(swId || activeSwitch.id);
                     setIsTroubleshootOpen(true);
                   }}
+                  onBackToList={() => setSelectedSwitchId(null)}
                   theme={theme}
                 />
               ) : (
-                <div className={`h-96 flex flex-col items-center justify-center border border-dashed rounded-2xl p-8 text-center ${
-                  isLight ? 'bg-white border-slate-300' : 'bg-slate-900/20 border-slate-800'
-                }`}>
-                  <HardDrive className="w-12 h-12 text-slate-400 mb-3" />
-                  <h3 className="text-base font-semibold text-slate-700 dark:text-slate-300">
-                    Коммутатор не выбран
-                  </h3>
-                  <p className="text-xs text-slate-500 max-w-sm mt-1">
-                    Выберите коммутатор из списка слева или добавьте новый, чтобы просмотреть его лицевую панель и настроить порты.
-                  </p>
-                  <button
-                    onClick={handleOpenNewSwitch}
-                    className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-lg flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Добавить коммутатор
-                  </button>
-                </div>
+                <EmptyState
+                  theme={theme}
+                  icon={HardDrive}
+                  title="Коммутатор не выбран"
+                  description="Выберите коммутатор из списка слева или добавьте новый, чтобы просмотреть его лицевую панель и настроить порты."
+                  action={canEdit ? {
+                    label: 'Добавить коммутатор',
+                    icon: Plus,
+                    onClick: handleOpenNewSwitch
+                  } : null}
+                />
               )}
             </section>
           </div>
@@ -1276,8 +1319,9 @@ export default function App() {
             setSwitches(prev => [...prev, created]);
             setSelectedSwitchId(created.id);
             setCurrentView('switches');
+            toast.success(`Конфигурация «${created.name}» успешно импортирована`);
           } catch (err) {
-            alert(`Ошибка импорта: ${err.message}`);
+            toast.error(`Ошибка импорта: ${err.message}`);
           }
         }}
         theme={theme}
@@ -1469,7 +1513,73 @@ export default function App() {
           onSyncComplete={fetchData}
           theme={theme}
         />
+
+        {/* PoE Power Budget Manager Modal */}
+        <PoeBudgetModal
+          isOpen={isPoeModalOpen}
+          onClose={() => setIsPoeModalOpen(false)}
+          switches={switches}
+          selectedSwitchId={poeModalSwitchId}
+          onUpdateSwitch={async (swId, updatedData) => {
+            await api.updateSwitch(swId, updatedData);
+            await fetchData();
+          }}
+          theme={theme}
+        />
+
+        {/* Network Auto-Discovery Scanner Modal */}
+        <NetworkDiscoveryModal
+          isOpen={isDiscoveryModalOpen}
+          onClose={() => setIsDiscoveryModalOpen(false)}
+          vlans={vlans}
+          switches={switches}
+          onReloadSwitches={fetchData}
+          onAddIpToIpam={handleAddIpFromScanner}
+          theme={theme}
+        />
+
+        {/* CLI Configuration Template Engine Modal */}
+        <ConfigTemplateModal
+          isOpen={isConfigTemplatesModalOpen}
+          onClose={() => setIsConfigTemplatesModalOpen(false)}
+          switches={switches}
+          vlans={vlans}
+          theme={theme}
+        />
       </Suspense>
+
+      {/* Global Command Palette (Ctrl+K / Cmd+K) */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        switches={switches}
+        patchPanels={patchPanels}
+        servers={servers}
+        vlans={vlans}
+        onNavigateView={setCurrentView}
+        onSelectSwitch={(id) => {
+          setSelectedSwitchId(id);
+          setCurrentView('switches');
+        }}
+        onSelectPatchPanel={(id) => {
+          setSelectedPatchPanelId(id);
+          setCurrentView('patchPanels');
+        }}
+        onOpenNewSwitch={handleOpenNewSwitch}
+        onOpenVlanModal={() => setIsVlanModalOpen(true)}
+        onOpenAuditModal={() => setIsAuditModalOpen(true)}
+        onOpenDiscoveryModal={() => setIsDiscoveryModalOpen(true)}
+        onOpenPoeModal={(swId) => {
+          setPoeModalSwitchId(swId || selectedSwitchId || switches[0]?.id);
+          setIsPoeModalOpen(true);
+        }}
+        onOpenTroubleshoot={(swId) => {
+          setTroubleshootSwitchId(swId || selectedSwitchId || switches[0]?.id);
+          setIsTroubleshootOpen(true);
+        }}
+        onToggleTheme={toggleTheme}
+        theme={theme}
+      />
     </div>
   );
 }

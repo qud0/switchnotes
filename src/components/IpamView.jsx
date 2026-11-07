@@ -18,11 +18,13 @@ import {
   Shield,
   Zap,
   Tag,
-  Users
+  Users,
+  Scissors
 } from 'lucide-react';
 import { parseSubnet, isIpInDhcpRange, longToIp, ipToLong } from '../utils/ipamUtils';
 import { downloadCsv } from '../utils/exportUtils';
 import { api } from '../api';
+import { VlsmSplitterModal } from './VlsmSplitterModal';
 
 const TYPE_COLORS = {
   gateway: { bg: 'bg-purple-600', text: 'text-purple-600 dark:text-purple-400', badge: 'bg-purple-500/10 border-purple-500/20 text-purple-600 dark:text-purple-400' },
@@ -63,6 +65,7 @@ export function IpamView({
   const [isSyncing, setIsSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [isVlsmModalOpen, setIsVlsmModalOpen] = useState(false);
 
   const handleSyncServers = async () => {
     try {
@@ -251,14 +254,24 @@ export function IpamView({
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Подсети / VLAN ({vlans.length})
             </span>
-            <button
-              onClick={handleExportAllIpamCSV}
-              className="text-xs text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 font-medium flex items-center gap-1 cursor-pointer transition-colors"
-              title="Экспорт всей базы IPAM всех VLAN в Excel (CSV)"
-            >
-              <Download className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Все (Excel)</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setIsVlsmModalOpen(true)}
+                className="text-xs bg-indigo-600/10 hover:bg-indigo-600 border border-indigo-500/30 text-indigo-500 hover:text-white px-2.5 py-1 rounded-lg font-medium flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                title="Интерактивный калькулятор нарезки подсетей (VLSM)"
+              >
+                <Scissors className="w-3.5 h-3.5" />
+                <span>VLSM</span>
+              </button>
+              <button
+                onClick={handleExportAllIpamCSV}
+                className="text-xs text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                title="Экспорт всей базы IPAM всех VLAN в Excel (CSV)"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Все (Excel)</span>
+              </button>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -603,11 +616,11 @@ export function IpamView({
                   </div>
 
                   {/* Table */}
-                  <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                  <div className="overflow-x-auto max-h-[75vh] overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800">
                     <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className={`border-b font-mono text-[11px] text-slate-500 uppercase ${
-                          isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
+                      <thead className="sticky top-0 z-10 shadow-xs">
+                        <tr className={`border-b font-mono text-[11px] uppercase ${
+                          isLight ? 'bg-slate-50/95 text-slate-700 border-slate-200 backdrop-blur-md' : 'bg-slate-950/95 text-slate-300 border-slate-800 backdrop-blur-md'
                         }`}>
                           <th className="py-2.5 px-3">IP-адрес</th>
                           <th className="py-2.5 px-3">Имя хоста</th>
@@ -622,8 +635,14 @@ export function IpamView({
                       <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                         {filteredTableList.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className="py-8 text-center text-slate-400">
-                              {searchQuery ? 'Ничего не найдено по вашему запросу' : 'В этой подсети пока нет выделенных IP'}
+                            <td colSpan={8} className="py-12 text-center text-slate-400">
+                              <Globe className="w-8 h-8 text-slate-400 mx-auto mb-2 opacity-50" />
+                              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                {searchQuery ? 'Ничего не найдено по вашему запросу' : 'В этой подсети пока нет выделенных IP'}
+                              </p>
+                              <p className="text-[11px] text-slate-400 mt-0.5">
+                                {searchQuery ? 'Измените фильтр поиска или выберите другой VLAN' : 'Нажмите «Выделить IP» или «Авто-выбор» для назначения адреса'}
+                              </p>
                             </td>
                           </tr>
                         ) : (
@@ -717,6 +736,15 @@ export function IpamView({
           )}
         </section>
       </div>
+
+      {/* VLSM Subnet Splitter Modal */}
+      <VlsmSplitterModal
+        isOpen={isVlsmModalOpen}
+        onClose={() => setIsVlsmModalOpen(false)}
+        existingVlans={vlans}
+        onVlanCreated={onReloadIpam}
+        theme={theme}
+      />
     </div>
   );
 }

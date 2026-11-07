@@ -32,10 +32,13 @@ import {
   Sliders,
   GitBranch,
   GitCommit,
-  ExternalLink
+  ExternalLink,
+  RotateCcw,
+  ShieldAlert
 } from 'lucide-react';
 import { api } from '../api';
-import { computeConfigDiff, formatConfigLine } from '../utils/diffUtils';
+import { computeConfigDiff, formatConfigLine, generateRollbackScript } from '../utils/diffUtils';
+import { useToast } from '../context/ToastContext';
 
 export function ConfigBackupModal({
   isOpen,
@@ -46,6 +49,7 @@ export function ConfigBackupModal({
   if (!isOpen || !switchData) return null;
 
   const isLight = theme === 'light';
+  const toast = useToast();
   const fileInputRef = useRef(null);
 
   // Active Tab: 'revisions' | 'diff' | 'cli' | 'schedule' | 'git'
@@ -143,6 +147,73 @@ export function ConfigBackupModal({
     return computeConfigDiff(textA, textB);
   }, [backupObjA, backupObjB]);
 
+  // Config Drift: Detect if latest backup differs from previous
+  const configDrift = useMemo(() => {
+    if (backups.length < 2) return null;
+    const latest = backups[0];
+    const previous = backups[1];
+    const diff = computeConfigDiff(previous.content, latest.content);
+    if (diff.isIdentical) return null;
+    return {
+      hasDrift: true,
+      added: diff.stats.added,
+      removed: diff.stats.removed,
+      latestDate: new Date(latest.timestamp).toLocaleDateString('ru-RU'),
+      previousDate: new Date(previous.timestamp).toLocaleDateString('ru-RU')
+    };
+  }, [backups]);
+
+  // Rollback state
+  const [showRollbackModal, setShowRollbackModal] = useState(false);
+  const [rollbackCopied, setRollbackCopied] = useState(false);
+  const [isApplyingRollback, setIsApplyingRollback] = useState(false);
+  const [rollbackSuccessMsg, setRollbackSuccessMsg] = useState(null);
+  const [rollbackError, setRollbackError] = useState(null);
+
+  // Rollback Script Generation (reverting B to A)
+  const rollbackResult = useMemo(() => {
+    if (!backupObjA || !backupObjB || diffResult.isIdentical) return null;
+    return generateRollbackScript(diffResult.rows, switchData.vendor || 'MikroTik');
+  }, [backupObjA, backupObjB, diffResult, switchData.vendor]);
+
+  const handleApplyRollback = async () => {
+    if (!rollbackResult || !rollbackResult.script) return;
+    if (!window.confirm(`Вы уверены, что хотите применить откат конфигурации (${rollbackResult.rollbackCommandsCount} команд) на ${switchData.name} по SSH?`)) {
+      return;
+    }
+    setIsApplyingRollback(true);
+    setRollbackSuccessMsg(null);
+    setRollbackError(null);
+    try {
+      const res = await api.executeSwitchCli(switchData.id, {
+        host: sshHost,
+        port: sshPort,
+        username: sshUser,
+        password: sshPassword,
+        command: rollbackResult.script
+      });
+      setRollbackSuccessMsg(`Откат успешно применен на коммутатор! Ответ устройства:\n${res.stdout || res.output || 'Команды успешно выполнены'}`);
+      loadBackups();
+    } catch (err) {
+      setRollbackError(`Ошибка применения отката: ${err.message}`);
+    } finally {
+      setIsApplyingRollback(false);
+    }
+  };
+
+  const handleDownloadRollback = () => {
+    if (!rollbackResult) return;
+    const isMikroTik = (switchData.vendor || '').toLowerCase().includes('mikrotik');
+    const ext = isMikroTik ? 'rsc' : 'cfg';
+    const blob = new Blob([rollbackResult.script], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rollback_${switchData.name || 'switch'}_${Date.now()}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Trigger SSH Backup
   const handleFetchSsh = async (e) => {
     e.preventDefault();
@@ -183,10 +254,11 @@ export function ConfigBackupModal({
             comment: `Импорт из файла: ${file.name}`,
             author: 'admin (Файл)'
           });
+          toast.success(`Бэкап из «${file.name}» успешно загружен`);
           await loadBackups();
         }
       } catch (err) {
-        alert(`Ошибка загрузки: ${err.message}`);
+        toast.error(`Ошибка загрузки: ${err.message}`);
       }
     };
     reader.readAsText(file);
@@ -198,9 +270,10 @@ export function ConfigBackupModal({
     if (!window.confirm('Удалить эту ревизию конфигурации?')) return;
     try {
       await api.deleteBackup(bId);
+      toast.success('Ревизия конфигурации удалена');
       await loadBackups();
     } catch (err) {
-      alert(`Ошибка удаления: ${err.message}`);
+      toast.error(`Ошибка удаления: ${err.message}`);
     }
   };
 
@@ -257,9 +330,9 @@ export function ConfigBackupModal({
     try {
       const res = await api.updateBackupSchedule(updated);
       setScheduleSettings(res);
-      alert('Настройки расписания авто-бэкапа сохранены!');
+      toast.success('Настройки расписания авто-бэкапа сохранены!');
     } catch (err) {
-      alert(`Ошибка сохранения: ${err.message}`);
+      toast.error(`Ошибка сохранения: ${err.message}`);
     } finally {
       setSavingSchedule(false);
     }
@@ -272,10 +345,11 @@ export function ConfigBackupModal({
     try {
       const res = await api.triggerAllBackups();
       setTriggerResult(res);
+      toast.success('Запущен внеплановый бэкап всех коммутаторов');
       await loadBackups();
       await loadScheduleSettings();
     } catch (err) {
-      alert(`Ошибка запуска: ${err.message}`);
+      toast.error(`Ошибка запуска: ${err.message}`);
     } finally {
       setTriggeringAll(false);
     }
@@ -356,7 +430,7 @@ export function ConfigBackupModal({
   // Commit current switch config to Git
   const handleCommitCurrentSwitch = async () => {
     if (!activeBackup?.content) {
-      alert('Нет активной конфигурации для коммита');
+      toast.warning('Нет активной конфигурации для коммита');
       return;
     }
     setCommittingGit(true);
@@ -404,10 +478,10 @@ export function ConfigBackupModal({
     setSavingGitRemote(true);
     try {
       await api.setGitRemote(remoteGitUrl);
-      alert('URL удаленного Git-репозитория сохранен');
+      toast.success('URL удаленного Git-репозитория сохранен');
       await loadGitStatus();
     } catch (err) {
-      alert(`Ошибка: ${err.message}`);
+      toast.error(`Ошибка: ${err.message}`);
     } finally {
       setSavingGitRemote(false);
     }
@@ -419,12 +493,12 @@ export function ConfigBackupModal({
     try {
       const res = await api.pushGitRemote();
       if (res.success) {
-        alert('Успешно отправлено в удаленный Git-репозиторий!');
+        toast.success('Успешно отправлено в удаленный Git-репозиторий!');
       } else {
-        alert(`Ошибка push: ${res.error}`);
+        toast.error(`Ошибка push: ${res.error}`);
       }
     } catch (err) {
-      alert(`Ошибка: ${err.message}`);
+      toast.error(`Ошибка: ${err.message}`);
     } finally {
       setPushingGit(false);
     }
@@ -490,6 +564,11 @@ export function ConfigBackupModal({
               >
                 <GitCompare className="w-3.5 h-3.5" />
                 <span>Сравнение (Diff)</span>
+                {configDrift && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white font-mono text-[9px] font-bold animate-pulse" title={`Обнаружен дрифт: +${configDrift.added} / -${configDrift.removed} строк`}>
+                    Дрифт
+                  </span>
+                )}
               </button>
 
               <button
@@ -954,8 +1033,45 @@ export function ConfigBackupModal({
                       Unified
                     </button>
                   </div>
+
+                  {/* Rollback Generator Button */}
+                  {rollbackResult && !diffResult.isIdentical && (
+                    <button
+                      onClick={() => setShowRollbackModal(true)}
+                      className="h-7 px-2.5 rounded-lg bg-linear-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer ml-1 transition-all shrink-0"
+                      title="Сгенерировать команды отката к версии A"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Откат (Rollback CLI)</span>
+                    </button>
+                  )}
                 </div>
               </div>
+
+              {/* Config Drift Banner */}
+              {configDrift && (
+                <div className="px-4 py-2 bg-rose-500/10 border-b border-rose-500/20 text-rose-300 text-xs flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>
+                      <strong className="text-white">Дрифт конфигурации:</strong> Последняя ревизия содержит 
+                      <span className="text-emerald-400 font-mono font-bold"> +{configDrift.added}</span> и 
+                      <span className="text-rose-400 font-mono font-bold"> -{configDrift.removed}</span> строк по сравнению с предыдущей.
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (backups.length >= 2) {
+                        setDiffVersionA(backups[1].id);
+                        setDiffVersionB(backups[0].id);
+                      }
+                    }}
+                    className="text-[11px] text-rose-300 underline hover:text-white cursor-pointer"
+                  >
+                    Сравнить последнюю с базовой
+                  </button>
+                </div>
+              )}
 
               {/* Diff Code Area */}
               <div className="flex-1 overflow-auto p-3 font-mono text-xs leading-relaxed select-text">
@@ -1191,7 +1307,7 @@ export function ConfigBackupModal({
                         type="button"
                         onClick={() => {
                           navigator.clipboard.writeText(cliOutput);
-                          alert('Вывод скопирован в буфер');
+                          toast.info('Вывод скопирован в буфер обмена');
                         }}
                         className="hover:text-white transition-colors"
                       >
@@ -1641,6 +1757,168 @@ export function ConfigBackupModal({
             </div>
           )}
         </div>
+
+        {/* ROLLBACK MODAL DRAWER */}
+        {showRollbackModal && rollbackResult && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className={`w-full max-w-4xl max-h-[90vh] rounded-2xl border shadow-2xl flex flex-col overflow-hidden ${
+              isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900 border-slate-800 text-slate-100'
+            }`}>
+              {/* Header */}
+              <div className={`p-4 border-b flex items-center justify-between ${
+                isLight ? 'bg-amber-50/80 border-slate-200' : 'bg-slate-950 border-slate-800'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
+                    <RotateCcw className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <span>Скрипт отката конфигурации</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                        {switchData.vendor || 'RouterOS'}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Откат нежелательных изменений ревизии B к базовой ревизии A на устройстве <strong>{switchData.name}</strong>
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowRollbackModal(false)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Stats Bar */}
+              <div className={`px-4 py-2 border-b flex items-center justify-between text-xs font-mono ${
+                isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/60 border-slate-800'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <span className="text-slate-400">
+                    Всего команд отката: <strong className="text-amber-500">{rollbackResult.rollbackCommandsCount}</strong>
+                  </span>
+                  <span className="text-rose-400">
+                    Отмена добавленных: <strong>{rollbackResult.addedCount}</strong>
+                  </span>
+                  <span className="text-emerald-400">
+                    Восстановление: <strong>{rollbackResult.removedCount}</strong>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(rollbackResult.script);
+                      setRollbackCopied(true);
+                      setTimeout(() => setRollbackCopied(false), 2000);
+                    }}
+                    className="h-7 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    {rollbackCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{rollbackCopied ? 'Скопировано!' : 'Копировать'}</span>
+                  </button>
+                  <button
+                    onClick={handleDownloadRollback}
+                    className="h-7 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Скачать скрипт</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Status alerts */}
+              {rollbackSuccessMsg && (
+                <div className="p-3 bg-emerald-500/10 border-b border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <pre className="whitespace-pre-wrap font-mono">{rollbackSuccessMsg}</pre>
+                </div>
+              )}
+              {rollbackError && (
+                <div className="p-3 bg-rose-500/10 border-b border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{rollbackError}</span>
+                </div>
+              )}
+
+              {/* Script code preview */}
+              <div className="flex-1 overflow-auto p-4 bg-slate-950 font-mono text-xs text-slate-200 leading-relaxed max-h-80 select-text">
+                <pre className="space-y-0.5">
+                  {rollbackResult.script.split('\n').map((line, idx) => (
+                    <div key={idx} className="flex hover:bg-slate-900 px-1 rounded-xs">
+                      <span className="w-8 shrink-0 text-slate-600 select-none text-right pr-3 text-[11px]">
+                        {idx + 1}
+                      </span>
+                      <span className={line.startsWith('#') || line.startsWith('!') ? 'text-slate-500 italic' : line.startsWith('/') || line.startsWith('configure') ? 'text-cyan-400 font-bold' : line.includes('remove') || line.includes('no ') ? 'text-rose-400' : 'text-emerald-400'}>
+                        {line}
+                      </span>
+                    </div>
+                  ))}
+                </pre>
+              </div>
+
+              {/* SSH Credentials & Execution Footer */}
+              <div className={`p-4 border-t flex flex-wrap items-center justify-between gap-3 ${
+                isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
+              }`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-slate-400 font-medium">SSH доступ:</span>
+                  <input
+                    type="text"
+                    value={sshHost}
+                    onChange={(e) => setSshHost(e.target.value)}
+                    placeholder="Хост IP"
+                    className="h-8 w-28 px-2 rounded-lg bg-slate-900 border border-slate-700 text-xs font-mono text-white outline-none"
+                  />
+                  <input
+                    type="text"
+                    value={sshUser}
+                    onChange={(e) => setSshUser(e.target.value)}
+                    placeholder="Логин"
+                    className="h-8 w-20 px-2 rounded-lg bg-slate-900 border border-slate-700 text-xs font-mono text-white outline-none"
+                  />
+                  <input
+                    type="password"
+                    value={sshPassword}
+                    onChange={(e) => setSshPassword(e.target.value)}
+                    placeholder="Пароль"
+                    className="h-8 w-24 px-2 rounded-lg bg-slate-900 border border-slate-700 text-xs font-mono text-white outline-none"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowRollbackModal(false)}
+                    className="h-9 px-4 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-medium cursor-pointer transition-colors"
+                  >
+                    Закрыть
+                  </button>
+                  <button
+                    onClick={handleApplyRollback}
+                    disabled={isApplyingRollback || !rollbackResult.rollbackCommandsCount}
+                    className="h-9 px-4 rounded-xl bg-linear-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer transition-all disabled:opacity-50"
+                  >
+                    {isApplyingRollback ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Применение отката...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw className="w-4 h-4" />
+                        <span>Применить откат на коммутатор (SSH)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

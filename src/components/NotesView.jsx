@@ -4,8 +4,12 @@ import {
   Tag, Calendar, Sparkles, FileText, Code, CheckSquare
 } from 'lucide-react';
 import { api } from '../api';
+import { useToast } from '../context/ToastContext';
+import { EmptyState } from './EmptyState';
 
 export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' }) {
+  const isLight = theme === 'light';
+  const toast = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -85,9 +89,10 @@ export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' })
         await api.createNote(payload);
       }
       setIsModalOpen(false);
+      toast.success(editingNote ? 'Заметка обновлена' : 'Заметка создана');
       onReloadNotes();
     } catch (err) {
-      alert(`Ошибка сохранения заметки: ${err.message}`);
+      toast.error(`Ошибка сохранения заметки: ${err.message}`);
     }
   };
 
@@ -95,9 +100,10 @@ export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' })
     if (!window.confirm(`Удалить заметку "${title}"?`)) return;
     try {
       await api.deleteNote(id);
+      toast.success(`Заметка «${title}» удалена`);
       onReloadNotes();
     } catch (err) {
-      alert(`Ошибка удаления заметки: ${err.message}`);
+      toast.error(`Ошибка удаления заметки: ${err.message}`);
     }
   };
 
@@ -108,20 +114,24 @@ export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' })
   return (
     <div className="space-y-6">
       {/* Top Controls Toolbar */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl backdrop-blur-md">
+      <div className={`border rounded-2xl p-4 shadow-xl backdrop-blur-md transition-colors ${
+        isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900/90 border-slate-800 text-white'
+      }`}>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+            <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-600 dark:text-purple-400">
               <BookOpen className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-base font-bold text-white tracking-wide flex items-center gap-2">
+              <h1 className={`text-base font-bold tracking-wide flex items-center gap-2 ${
+                isLight ? 'text-slate-900' : 'text-white'
+              }`}>
                 Инженерный блокнот
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20 font-semibold">
+                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-semibold">
                   Notes & Cheatsheets
                 </span>
               </h1>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Памятки по CLI, регламенты маркировки СКС, схемы обжима и настройки VLAN
               </p>
             </div>
@@ -137,15 +147,17 @@ export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' })
         </div>
 
         {/* Filter bar & Search */}
-        <div className="mt-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
+        <div className={`mt-4 pt-3 border-t flex flex-wrap items-center justify-between gap-3 ${
+          isLight ? 'border-slate-200' : 'border-slate-800/80'
+        }`}>
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs text-slate-400 mr-1 font-semibold">Категория:</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400 mr-1 font-semibold">Категория:</span>
             <button
               onClick={() => setSelectedCategory('all')}
-              className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors ${
+              className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                 selectedCategory === 'all'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-800 text-slate-400 hover:text-white'
+                  ? 'bg-blue-600 text-white font-bold'
+                  : isLight ? 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900' : 'bg-slate-800 text-slate-400 hover:text-white'
               }`}
             >
               Все ({notes.length})
@@ -154,10 +166,10 @@ export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' })
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors ${
+                className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                   selectedCategory === cat
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-800 text-slate-400 hover:text-white'
+                    ? 'bg-blue-600 text-white font-bold'
+                    : isLight ? 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900' : 'bg-slate-800 text-slate-400 hover:text-white'
                 }`}
               >
                 {cat}
@@ -172,7 +184,9 @@ export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' })
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Поиск по тексту заметок..."
-              className="w-full h-8 pl-8 pr-3 bg-slate-950/80 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+              className={`w-full h-8 pl-8 pr-3 border rounded-lg text-xs outline-none focus:border-blue-500 ${
+                isLight ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400' : 'bg-slate-950/80 border-slate-700 text-white placeholder-slate-500'
+              }`}
             />
           </div>
         </div>
@@ -181,23 +195,35 @@ export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' })
       {/* Notes Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredNotes.length === 0 ? (
-          <div className="col-span-full py-16 text-center text-slate-500 bg-slate-900/40 rounded-2xl border border-dashed border-slate-800">
-            <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-30 text-purple-400" />
-            <p className="text-sm font-semibold text-slate-300">Заметок не найдено</p>
-            <p className="text-xs text-slate-500 mt-1">
-              Создайте первую заметку или измените поисковый запрос
-            </p>
+          <div className="col-span-full">
+            <EmptyState
+              theme={theme}
+              icon={BookOpen}
+              title={searchQuery ? 'Заметок не найдено' : 'База заметок пуста'}
+              description={searchQuery ? 'Попробуйте изменить поисковый фильтр' : 'Ведите базу знаний, команды CLI, настройки VLAN и регламенты прямо в SwitchBook.'}
+              action={{
+                label: 'Создать заметку',
+                icon: Plus,
+                onClick: handleOpenAddModal
+              }}
+            />
           </div>
         ) : (
           filteredNotes.map(note => (
             <div 
               key={note.id}
-              className={`rounded-2xl border bg-slate-900/90 shadow-xl overflow-hidden flex flex-col justify-between transition-all hover:border-slate-700 ${
-                note.pinned ? 'border-purple-500/40' : 'border-slate-800'
+              className={`rounded-2xl border shadow-xl overflow-hidden flex flex-col justify-between transition-all ${
+                isLight ? 'bg-white hover:border-slate-300' : 'bg-slate-900/90 hover:border-slate-700'
+              } ${
+                note.pinned
+                  ? isLight ? 'border-purple-400 ring-1 ring-purple-300 shadow-purple-500/5' : 'border-purple-500/40 ring-1 ring-purple-500/20'
+                  : isLight ? 'border-slate-200' : 'border-slate-800'
               }`}
             >
               {/* Card Header */}
-              <div className="p-4 border-b border-slate-800/80 flex items-start justify-between gap-3">
+              <div className={`p-4 border-b flex items-start justify-between gap-3 ${
+                isLight ? 'border-slate-100 bg-slate-50/50' : 'border-slate-800/80'
+              }`}>
                 <div className="flex items-center gap-2.5">
                   <span 
                     className="w-3 h-3 rounded-full shrink-0 mt-0.5"
@@ -205,17 +231,19 @@ export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' })
                   />
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-bold text-white tracking-wide">
+                      <h3 className={`text-sm font-bold tracking-wide ${
+                        isLight ? 'text-slate-900' : 'text-white'
+                      }`}>
                         {note.title}
                       </h3>
                       {note.pinned && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
                           <Pin className="w-2.5 h-2.5" />
                           Закреплено
                         </span>
                       )}
                     </div>
-                    <span className="text-[11px] text-slate-400 font-medium">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                       {note.category} • {note.updatedAt ? new Date(note.updatedAt).toLocaleDateString() : ''}
                     </span>
                   </div>
@@ -224,14 +252,18 @@ export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' })
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => handleOpenEditNote(note)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+                    className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
+                      isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800' : 'bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white'
+                    }`}
                     title="Редактировать"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => handleDeleteNote(note.id, note.title)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-800/80 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors"
+                    className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
+                      isLight ? 'bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600' : 'bg-slate-800/80 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400'
+                    }`}
                     title="Удалить"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -240,7 +272,9 @@ export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' })
               </div>
 
               {/* Card Content with whitespace & bullet styling */}
-              <div className="p-4 text-xs text-slate-300 space-y-2 whitespace-pre-wrap font-sans leading-relaxed flex-1">
+              <div className={`p-4 text-xs space-y-2 whitespace-pre-wrap font-sans leading-relaxed flex-1 ${
+                isLight ? 'text-slate-700' : 'text-slate-300'
+              }`}>
                 {note.content}
               </div>
             </div>
@@ -261,9 +295,13 @@ export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' })
             }
           }}
         >
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-white">
+          <div className={`border w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] transition-colors ${
+            isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900 border-slate-800 text-white'
+          }`}>
+            <div className={`px-6 py-4 border-b flex items-center justify-between ${
+              isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-800'
+            }`}>
+              <h2 className={`text-base font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>
                 {editingNote ? 'Редактирование заметки' : 'Новая инженерная заметка'}
               </h2>
               <button
@@ -274,7 +312,9 @@ export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' })
                   }
                   setIsModalOpen(false);
                 }}
-                className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+                className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
+                  isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-600' : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white'
+                }`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -282,39 +322,43 @@ export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' })
 
             <form onSubmit={handleSaveNote} className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">Заголовок заметки:</label>
+                <label className="text-slate-600 dark:text-slate-300 font-semibold block mb-1">Заголовок заметки *:</label>
                 <input
                   type="text"
                   required
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
                   placeholder="Например: Схема обжима T568B или Команды RouterOS"
-                  className="w-full h-10 px-3 bg-slate-950 border border-slate-700 rounded-xl text-white font-medium focus:outline-none focus:border-blue-500"
+                  className={`w-full h-10 px-3 border rounded-xl font-medium outline-none focus:border-blue-500 ${
+                    isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-slate-950 border-slate-700 text-white'
+                  }`}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-slate-300 font-semibold block mb-1">Категория:</label>
+                  <label className="text-slate-600 dark:text-slate-300 font-semibold block mb-1">Категория:</label>
                   <input
                     type="text"
                     value={formCategory}
                     onChange={(e) => setFormCategory(e.target.value)}
                     placeholder="СКС, VLAN, MikroTik..."
-                    className="w-full h-10 px-3 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                    className={`w-full h-10 px-3 border rounded-xl outline-none focus:border-blue-500 ${
+                      isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-slate-950 border-slate-700 text-white'
+                    }`}
                   />
                 </div>
 
                 <div>
-                  <label className="text-slate-300 font-semibold block mb-1">Цветовая метка:</label>
+                  <label className="text-slate-600 dark:text-slate-300 font-semibold block mb-1">Цветовая метка:</label>
                   <div className="flex items-center gap-2 h-10">
                     {['#3b82f6', '#10b981', '#f43f5e', '#8b5cf6', '#f59e0b', '#06b6d4'].map(c => (
                       <button
                         key={c}
                         type="button"
                         onClick={() => setFormColor(c)}
-                        className={`w-6 h-6 rounded-full border-2 transition-transform ${
-                          formColor === c ? 'scale-110 border-white' : 'border-transparent'
+                        className={`w-6 h-6 rounded-full border-2 transition-transform cursor-pointer ${
+                          formColor === c ? 'scale-110 border-blue-500 shadow-md' : 'border-transparent'
                         }`}
                         style={{ backgroundColor: c }}
                       />
@@ -329,28 +373,32 @@ export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' })
                   id="pinNote"
                   checked={formPinned}
                   onChange={(e) => setFormPinned(e.target.checked)}
-                  className="rounded border-slate-700 text-blue-600 focus:ring-0"
+                  className="rounded border-slate-400 text-blue-600 focus:ring-0 cursor-pointer"
                 />
-                <label htmlFor="pinNote" className="text-slate-300 cursor-pointer select-none">
+                <label htmlFor="pinNote" className="text-slate-600 dark:text-slate-300 cursor-pointer select-none">
                   Закрепить вверху списка (📌 Важная памятка)
                 </label>
               </div>
 
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="text-slate-300 font-semibold">Содержимое заметки:</label>
+                  <label className="text-slate-600 dark:text-slate-300 font-semibold">Содержимое заметки:</label>
                   <div className="flex items-center gap-1.5 text-[11px]">
                     <button
                       type="button"
                       onClick={() => insertSnippet('`show mac-address-table`')}
-                      className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 hover:text-white"
+                      className={`px-2 py-0.5 rounded cursor-pointer ${
+                        isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-slate-800 text-slate-300 hover:text-white'
+                      }`}
                     >
                       + Код
                     </button>
                     <button
                       type="button"
                       onClick={() => insertSnippet('* Пункт списка 1\n* Пункт списка 2')}
-                      className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 hover:text-white"
+                      className={`px-2 py-0.5 rounded cursor-pointer ${
+                        isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-slate-800 text-slate-300 hover:text-white'
+                      }`}
                     >
                       + Список
                     </button>
@@ -361,21 +409,27 @@ export default function NotesView({ notes = [], onReloadNotes, theme = 'dark' })
                   value={formContent}
                   onChange={(e) => setFormContent(e.target.value)}
                   placeholder="Введите текст заметки, команды CLI, инструкции по настройке..."
-                  className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-xs focus:outline-none focus:border-blue-500 leading-relaxed"
+                  className={`w-full p-3 border rounded-xl font-mono text-xs outline-none focus:border-blue-500 leading-relaxed ${
+                    isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-slate-950 border-slate-700 text-white'
+                  }`}
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+              <div className={`pt-3 border-t flex justify-end gap-2 ${
+                isLight ? 'border-slate-200' : 'border-slate-800'
+              }`}>
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="h-9 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium"
+                  className={`h-9 px-4 rounded-xl font-medium cursor-pointer ${
+                    isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                  }`}
                 >
                   Отмена
                 </button>
                 <button
                   type="submit"
-                  className="h-9 px-5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold flex items-center gap-1.5 shadow-md shadow-blue-500/20"
+                  className="h-9 px-5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold flex items-center gap-1.5 shadow-md shadow-blue-500/20 cursor-pointer"
                 >
                   <Check className="w-4 h-4" />
                   <span>Сохранить</span>

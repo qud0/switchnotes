@@ -143,3 +143,192 @@ export function formatConfigLine(line = '') {
 
   return { isCommand, text: line };
 }
+
+/**
+ * Генерация скрипта отката (Rollback CLI) на основе различий двух конфигураций
+ * @param {Array} diffRows - Строки diff, полученные из computeConfigDiff(textA, textB)
+ *                           где A = Базовая версия (к которой откатываемся),
+ *                               B = Текущая версия (с нежелательными изменениями).
+ * @param {string} vendor - Вендор оборудования ('MikroTik', 'SNR', 'Cisco', 'Ubiquiti')
+ * @param {Object} options - Дополнительные параметры
+ * @returns {Object} { script: string, rollbackCommandsCount: number, summary: string }
+ */
+export function generateRollbackScript(diffRows = [], vendor = 'MikroTik', options = {}) {
+  const v = (vendor || 'mikrotik').toLowerCase();
+  const rollbackLines = [];
+  let currentContext = null;
+  let commandsCount = 0;
+
+  const addedInCurrent = diffRows.filter(r => r.type === 'added');
+  const removedInCurrent = diffRows.filter(r => r.type === 'removed');
+
+  const timestamp = new Date().toLocaleString('ru-RU');
+  
+  if (v.includes('mikrotik')) {
+    rollbackLines.push(`# ==============================================================================`);
+    rollbackLines.push(`# MIKROTIK ROUTEROS ROLLBACK SCRIPT`);
+    rollbackLines.push(`# Автоматически сформировано SwitchBook Config Drift Engine`);
+    rollbackLines.push(`# Дата формирования: ${timestamp}`);
+    rollbackLines.push(`# Назначение: Откат изменений текущей конфигурации к базовой ревизии`);
+    rollbackLines.push(`# ==============================================================================`);
+    rollbackLines.push(``);
+
+    // 1. Отмена добавленных команд (удаление добавленных записей)
+    if (addedInCurrent.length > 0) {
+      rollbackLines.push(`# --- [ЭТАП 1] Удаление новых записей и сброс добавленных параметров ---`);
+      
+      let currentSection = '';
+      addedInCurrent.forEach(row => {
+        const line = (row.textB || '').trim();
+        if (!line || line.startsWith('#')) return;
+
+        if (line.startsWith('/')) {
+          currentSection = line;
+          return;
+        }
+
+        // Если это команда add
+        if (line.startsWith('add ') || (currentSection && line.startsWith('add '))) {
+          commandsCount++;
+          // Извлекаем ключевой идентификатор (например name=..., comment=..., vlan-ids=...)
+          const nameMatch = line.match(/(?:name|interface|vlan-ids|comment|address)=([^\s]+)/);
+          const fullSection = line.startsWith('/') ? line.split(' ')[0] : currentSection;
+          
+          if (nameMatch) {
+            rollbackLines.push(`${fullSection} remove [find ${nameMatch[0]}]`);
+          } else {
+            rollbackLines.push(`# Внимание: требуется ручная проверка для удаления: ${currentSection} ${line}`);
+            rollbackLines.push(`${fullSection} remove [find ...]`);
+          }
+        } else if (line.startsWith('set ') || (currentSection && line.startsWith('set '))) {
+          commandsCount++;
+          rollbackLines.push(`# Сброс измененного параметра:`);
+          rollbackLines.push(`${currentSection || ''} ${line} disabled=yes`);
+        } else {
+          commandsCount++;
+          rollbackLines.push(`# Отмена: ${currentSection ? currentSection + ' ' : ''}${line}`);
+        }
+      });
+      rollbackLines.push(``);
+    }
+
+    // 2. Восстановление удаленных команд из базовой версии
+    if (removedInCurrent.length > 0) {
+      rollbackLines.push(`# --- [ЭТАП 2] Восстановление удаленных настроек из базовой версии ---`);
+      let currentSection = '';
+      removedInCurrent.forEach(row => {
+        const line = (row.textA || '').trim();
+        if (!line || line.startsWith('#')) return;
+
+        if (line.startsWith('/')) {
+          currentSection = line;
+          rollbackLines.push(line);
+          return;
+        }
+
+        commandsCount++;
+        if (currentSection && !line.startsWith('/')) {
+          rollbackLines.push(`${currentSection} ${line}`);
+        } else {
+          rollbackLines.push(line);
+        }
+      });
+      rollbackLines.push(``);
+    }
+
+    rollbackLines.push(`# [ЭТАП 3] Фиксация и сохранение конфигурации`);
+    rollbackLines.push(`/system logging info message="[SwitchBook] Rollback script successfully executed"`);
+
+  } else if (v.includes('snr') || v.includes('cisco') || v.includes('ubiquiti') || v.includes('unifi')) {
+    const isSNR = v.includes('snr');
+    const isUbiquiti = v.includes('ubiquiti') || v.includes('unifi');
+    const brandName = isSNR ? 'SNR NAG (Comware/CLI)' : isUbiquiti ? 'Ubiquiti EdgeSwitch' : 'Cisco IOS';
+
+    rollbackLines.push(`! ==============================================================================`);
+    rollbackLines.push(`! ${brandName.toUpperCase()} ROLLBACK SCRIPT`);
+    rollbackLines.push(`! Автоматически сформировано SwitchBook Config Drift Engine`);
+    rollbackLines.push(`! Дата формирования: ${timestamp}`);
+    rollbackLines.push(`! ==============================================================================`);
+    rollbackLines.push(``);
+    rollbackLines.push(`configure terminal`);
+    rollbackLines.push(``);
+
+    // 1. Отмена добавленных команд через 'no ...'
+    if (addedInCurrent.length > 0) {
+      rollbackLines.push(`! --- [ШАГ 1] Отмена добавленных команд (no-команды) ---`);
+      let inInterface = null;
+      let inVlan = null;
+
+      addedInCurrent.forEach(row => {
+        const line = (row.textB || '').trim();
+        if (!line || line.startsWith('!') || line.startsWith('#')) return;
+
+        if (/^interface\s+/i.test(line)) {
+          if (inInterface) rollbackLines.push(` exit`);
+          inInterface = line;
+          rollbackLines.push(line);
+          return;
+        }
+
+        if (/^vlan\s+\d+/i.test(line)) {
+          if (inVlan) rollbackLines.push(` exit`);
+          inVlan = line;
+          rollbackLines.push(line);
+          return;
+        }
+
+        if (/^(exit|end)/i.test(line)) {
+          if (inInterface || inVlan) rollbackLines.push(` exit`);
+          inInterface = null;
+          inVlan = null;
+          return;
+        }
+
+        commandsCount++;
+        // Если это удаление vlan или интерфейса целиком
+        if (/^no\s+/i.test(line)) {
+          // Если добавили 'no ...', то откат - выполнить саму команду без 'no'
+          rollbackLines.push(` ${line.replace(/^no\s+/i, '')}`);
+        } else if (/^switchport trunk allowed vlan add\s+(.+)/i.test(line)) {
+          const vlans = line.match(/^switchport trunk allowed vlan add\s+(.+)/i)[1];
+          rollbackLines.push(` switchport trunk allowed vlan remove ${vlans}`);
+        } else {
+          // Стандартный no префикс
+          rollbackLines.push(` no ${line}`);
+        }
+      });
+
+      if (inInterface || inVlan) {
+        rollbackLines.push(` exit`);
+      }
+      rollbackLines.push(``);
+    }
+
+    // 2. Восстановление удаленных команд
+    if (removedInCurrent.length > 0) {
+      rollbackLines.push(`! --- [ШАГ 2] Восстановление исходных команд из базовой версии ---`);
+      removedInCurrent.forEach(row => {
+        const line = (row.textA || '').trim();
+        if (!line || line.startsWith('!') || line.startsWith('#')) return;
+        commandsCount++;
+        rollbackLines.push(line);
+      });
+      rollbackLines.push(``);
+    }
+
+    rollbackLines.push(`! --- [ШАГ 3] Сохранение конфигурации в энергонезависимую память ---`);
+    rollbackLines.push(`end`);
+    rollbackLines.push(isSNR ? `write` : `write memory`);
+  }
+
+  const script = rollbackLines.join('\n');
+  const summary = `Команд отката: ${commandsCount} (Отмена: ${addedInCurrent.length}, Восстановление: ${removedInCurrent.length})`;
+
+  return {
+    script,
+    rollbackCommandsCount: commandsCount,
+    addedCount: addedInCurrent.length,
+    removedCount: removedInCurrent.length,
+    summary
+  };
+}

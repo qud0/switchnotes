@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Server,
   Cpu,
@@ -18,9 +18,15 @@ import {
   Image,
   FileText,
   Printer,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Scissors,
+  X,
+  Link2,
+  Unlink
 } from 'lucide-react';
+import { api } from '../api';
 import { exportRackSvg, exportRackPng, exportRackCsv, printDiagram } from '../utils/exportGraphics';
+import { useToast } from '../context/ToastContext';
 
 export function RackView({
   switches = [],
@@ -29,13 +35,34 @@ export function RackView({
   onSelectSwitch,
   onSelectPatchPanel,
   onSelectServer,
+  onReloadData,
   theme = 'dark'
 }) {
+  const toast = useToast();
   const [showPatchCords, setShowPatchCords] = useState(true);
+  const [isCablingMode, setIsCablingMode] = useState(false);
+  const [cablingSource, setCablingSource] = useState(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [cablingToast, setCablingToast] = useState(null);
+  const rackContainerRef = useRef(null);
   const [selectedCable, setSelectedCable] = useState(null); // highlight specific cable trace
   const [hoveredDeviceId, setHoveredDeviceId] = useState(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [isExportingPng, setIsExportingPng] = useState(false);
+  const [rackWidth, setRackWidth] = useState(700);
+
+  useEffect(() => {
+    if (!rackContainerRef.current) return;
+    const updateWidth = () => {
+      if (rackContainerRef.current) {
+        setRackWidth(rackContainerRef.current.clientWidth || 700);
+      }
+    };
+    updateWidth();
+    const ro = new ResizeObserver(updateWidth);
+    ro.observe(rackContainerRef.current);
+    return () => ro.disconnect();
+  }, []);
 
   // Combine switches, patch panels and servers into devices list with deviceType
   const allDevices = useMemo(() => {
@@ -219,11 +246,13 @@ export function RackView({
               cords.push({
                 id: `cord-pp-${dev.id}-${ppPort.id}`,
                 fromId: dev.id,
+                fromPortId: ppPort.id,
                 fromName: dev.name,
                 fromPortNum: ppPort.number,
                 fromPortLabel: ppPort.socket || `Порт ${ppPort.number}`,
                 fromU,
                 toId: ppPort.connectedSwitchId,
+                toPortId: targetPort?.id || ppPort.connectedSwitchPortId,
                 toName: targetSw?.name || 'Коммутатор',
                 toPortNum: targetPort?.number || ppPort.connectedSwitchPortId,
                 toPortLabel: `Порт ${targetPort?.number || ppPort.connectedSwitchPortId}`,
@@ -251,11 +280,13 @@ export function RackView({
               cords.push({
                 id: `cord-sw-${dev.id}-${swPort.id}`,
                 fromId: dev.id,
+                fromPortId: swPort.id,
                 fromName: dev.name,
                 fromPortNum: swPort.number,
                 fromPortLabel: `Порт ${swPort.number}`,
                 fromU,
                 toId: swPort.linkedSwitchId,
+                toPortId: swPort.linkedPortId,
                 toName: targetSw?.name || 'Коммутатор',
                 toPortNum: swPort.linkedPortId,
                 toPortLabel: `Порт ${swPort.linkedPortId}`,
@@ -281,11 +312,13 @@ export function RackView({
                 cords.push({
                   id: `cord-srv-${dev.id}-${nic.id}`,
                   fromId: dev.id,
+                  fromPortId: nic.id,
                   fromName: dev.name,
                   fromPortNum: nic.name,
                   fromPortLabel: `${nic.name} (${nic.speed || '1G'}${nic.role ? ` • ${nic.role}` : ''})`,
                   fromU,
                   toId: nic.connectedSwitchId,
+                  toPortId: targetPort?.id || nic.connectedPortId,
                   toName: targetSw?.name || 'Коммутатор',
                   toPortNum: targetPort?.number || nic.connectedPortId,
                   toPortLabel: `Порт ${targetPort?.number || targetPort?.name || nic.connectedPortId}`,
@@ -302,6 +335,96 @@ export function RackView({
 
     return cords;
   }, [currentRackDevices, deviceUnitLookup]);
+
+  const handleContainerMouseMove = (e) => {
+    if (!cablingSource || !rackContainerRef.current) return;
+    const rect = rackContainerRef.current.getBoundingClientRect();
+    setMousePos({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    });
+  };
+
+  const handleDisconnectCable = async (cable) => {
+    if (!cable) return;
+    try {
+      if (cable.type === 'patch-to-switch') {
+        await api.updatePatchPanelPort(cable.fromId, cable.fromPortId || cable.fromPortNum, {
+          connectedSwitchId: null,
+          connectedSwitchPortId: null
+        });
+        setCablingToast(`Патч-корд отключен: ${cable.fromName} (${cable.fromPortLabel}) ⟷ ${cable.toName}`);
+      } else if (cable.type === 'switch-to-switch') {
+        await api.updatePort(cable.fromId, cable.fromPortId || cable.fromPortNum, {
+          linkedSwitchId: null,
+          linkedPortId: null
+        });
+        setCablingToast(`Аплинк отключен: ${cable.fromName} ⟷ ${cable.toName}`);
+      }
+      setSelectedCable(null);
+      if (onReloadData) onReloadData();
+      setTimeout(() => setCablingToast(null), 3500);
+    } catch (err) {
+      toast.error(`Ошибка отключения патч-корда: ${err.message}`);
+    }
+  };
+
+  const handlePortClick = async (device, port) => {
+    if (!isCablingMode) return;
+
+    if (!cablingSource) {
+      // Step 1: Select as cabling source
+      setCablingSource({
+        deviceId: device.id,
+        deviceType: device.deviceType,
+        deviceName: device.name,
+        portId: port.id,
+        portNumber: port.number,
+        uNumber: deviceUnitLookup[device.id] || 20,
+        label: port.socket || port.name || `Порт ${port.number}`
+      });
+      return;
+    }
+
+    // If clicked on same port, cancel
+    if (cablingSource.deviceId === device.id && (cablingSource.portId === port.id || cablingSource.portNumber === port.number)) {
+      setCablingSource(null);
+      return;
+    }
+
+    // Step 2: Connect source to target
+    try {
+      if (cablingSource.deviceType === 'patchPanel' && device.deviceType === 'switch') {
+        await api.updatePatchPanelPort(cablingSource.deviceId, cablingSource.portId, {
+          connectedSwitchId: device.id,
+          connectedSwitchPortId: port.id
+        });
+        setCablingToast(`Патч-корд подключен: ${cablingSource.deviceName} (${cablingSource.label}) ⟷ ${device.name} (Порт ${port.number})`);
+      } else if (cablingSource.deviceType === 'switch' && device.deviceType === 'patchPanel') {
+        await api.updatePatchPanelPort(device.id, port.id, {
+          connectedSwitchId: cablingSource.deviceId,
+          connectedSwitchPortId: cablingSource.portId
+        });
+        setCablingToast(`Патч-корд подключен: ${device.name} (Порт ${port.number}) ⟷ ${cablingSource.deviceName} (${cablingSource.label})`);
+      } else if (cablingSource.deviceType === 'switch' && device.deviceType === 'switch') {
+        await api.updatePort(cablingSource.deviceId, cablingSource.portId, {
+          linkedSwitchId: device.id,
+          linkedPortId: port.id
+        });
+        setCablingToast(`Межкоммутаторный линк подключен: ${cablingSource.deviceName} ⟷ ${device.name}`);
+      } else {
+        toast.warning('Коммутация выполняется между Патч-панелью и Коммутатором или между двумя Коммутаторами.');
+        setCablingSource(null);
+        return;
+      }
+
+      setCablingSource(null);
+      if (onReloadData) onReloadData();
+      setTimeout(() => setCablingToast(null), 4000);
+    } catch (err) {
+      toast.error(`Ошибка коммутации: ${err.message}`);
+    }
+  };
 
   const isLight = theme === 'light';
   const totalUnits = 42;
@@ -372,6 +495,23 @@ export function RackView({
             <span className="text-[10px] font-mono px-1.5 py-0.2 bg-blue-500/20 rounded-full font-bold">
               {intraRackPatchCords.length}
             </span>
+          </button>
+
+          {/* Toggle Drag & Drop Cabling Mode Button */}
+          <button
+            onClick={() => {
+              setIsCablingMode(!isCablingMode);
+              setCablingSource(null);
+            }}
+            className={`h-9 px-3.5 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+              isCablingMode
+                ? 'bg-amber-500 text-black border-amber-400 shadow-md shadow-amber-500/30 ring-2 ring-amber-400'
+                : (isLight ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700' : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200')
+            }`}
+            title="Интерактивная кроссировка: кликните порт на одном устройстве, затем на другом для соединения"
+          >
+            <Zap className={`w-3.5 h-3.5 ${isCablingMode ? 'text-black fill-black' : 'text-amber-500'}`} />
+            <span>{isCablingMode ? 'Кроссировка: Активна' : 'Кроссировка (Drag & Drop)'}</span>
           </button>
 
           {/* Export Rack Menu Dropdown */}
@@ -580,6 +720,47 @@ export function RackView({
         </div>
       </div>
 
+      {/* Cabling Mode Instruction Banner */}
+      {isCablingMode && (
+        <div className="p-3 bg-linear-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between text-xs gap-3 animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
+              <Zap className="w-4 h-4 fill-amber-500" />
+            </div>
+            <div>
+              <div className="font-bold text-amber-500 flex items-center gap-2">
+                <span>Режим интерактивной кроссировки активен</span>
+                {cablingSource && (
+                  <span className="font-mono text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/30 animate-pulse">
+                    Выбран порт-источник: {cablingSource.deviceName} ({cablingSource.label})
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                {cablingSource
+                  ? 'Теперь кликните по целевому порту другого устройства (коммутатора или патч-панели) для создания соединения.'
+                  : 'Кликните по свободному порту патч-панели или коммутатора для начала протяжки патч-корда.'}
+              </p>
+            </div>
+          </div>
+          {cablingSource ? (
+            <button
+              onClick={() => setCablingSource(null)}
+              className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium cursor-pointer transition-colors"
+            >
+              Отменить выбор
+            </button>
+          ) : (
+            <button
+              onClick={() => setIsCablingMode(false)}
+              className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 rounded-lg text-xs font-medium cursor-pointer transition-colors"
+            >
+              Выйти из режима
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Selected Cable Inspector Banner */}
       {selectedCable && (
         <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-center justify-between text-xs gap-3">
@@ -592,17 +773,59 @@ export function RackView({
               </span>
             </div>
           </div>
-          <button
-            onClick={() => setSelectedCable(null)}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-white px-2 py-0.5 rounded-sm cursor-pointer"
-          >
-            ✕ Сброс
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleDisconnectCable(selectedCable)}
+              className="px-2.5 py-1 bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-500/30 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+              title="Отключить этот патч-корд"
+            >
+              <Scissors className="w-3.5 h-3.5" />
+              <span>Выдернуть патч-корд</span>
+            </button>
+            <button
+              onClick={() => setSelectedCable(null)}
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-white px-2 py-0.5 rounded-sm cursor-pointer"
+            >
+              ✕ Сброс
+            </button>
+          </div>
         </div>
       )}
 
+      {/* 42U Mini-Ruler Navigator (Sticky Desktop Widget) */}
+      <div className="hidden xl:flex fixed right-6 top-32 z-30 flex-col items-center p-2 rounded-2xl border shadow-xl backdrop-blur-md transition-colors bg-white/95 dark:bg-slate-900/95 border-slate-200 dark:border-slate-800 animate-pop-in">
+        <span className="text-[9px] font-mono font-bold text-slate-400 mb-1">42U</span>
+        <div className="flex flex-col gap-0.5 w-3.5">
+          {Array.from({ length: totalUnits }).map((_, i) => {
+            const u = totalUnits - i;
+            const dev = unitMap[u];
+            const devColor =
+              dev?.deviceType === 'switch'
+                ? 'bg-blue-500 hover:bg-blue-400'
+                : dev?.deviceType === 'patchPanel'
+                ? 'bg-amber-500 hover:bg-amber-400'
+                : dev?.deviceType === 'server'
+                ? 'bg-indigo-500 hover:bg-indigo-400'
+                : 'bg-slate-300 dark:bg-slate-800 hover:bg-slate-400';
+
+            return (
+              <button
+                key={u}
+                onClick={() => {
+                  const el = document.getElementById(`rack-unit-${u}`);
+                  el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }}
+                className={`w-3.5 h-1.5 rounded-xs transition-all hover:scale-150 cursor-pointer ${devColor}`}
+                title={`Юнит U${u}: ${dev ? `${dev.name} (${dev.vendor || dev.type || '1U'})` : 'Свободно'}`}
+              />
+            );
+          })}
+        </div>
+        <span className="text-[9px] font-mono font-bold text-slate-400 mt-1">1U</span>
+      </div>
+
       {/* 19-Inch Rack Frame with Realistic Rails & Interactive Patch Cords */}
-      <div className="max-w-3xl mx-auto py-2">
+      <div ref={rackContainerRef} onMouseMove={handleContainerMouseMove} className="max-w-3xl mx-auto py-2">
         <div className={`border-4 rounded-2xl p-3 shadow-2xl relative transition-colors ${
           isLight
             ? 'bg-slate-200 border-slate-400 shadow-slate-300'
@@ -634,7 +857,7 @@ export function RackView({
           {/* Unit Rows Container (from 42 down to 1) with Side Cable Routing Channels */}
           <div className="relative my-2">
             {/* SVG Overlay for Patch Cord Beziers */}
-            {showPatchCords && intraRackPatchCords.length > 0 && (
+            {((showPatchCords && intraRackPatchCords.length > 0) || cablingSource) && (
               <svg
                 className="absolute inset-0 w-full h-full pointer-events-none z-20"
                 style={{ overflow: 'visible' }}
@@ -645,23 +868,24 @@ export function RackView({
                     <feComposite in="SourceGraphic" in2="blur" operator="over" />
                   </filter>
                 </defs>
-                {intraRackPatchCords.map((cord, idx) => {
+                {showPatchCords && intraRackPatchCords.map((cord, idx) => {
                   const fromRowIndex = totalUnits - cord.fromU; // 0-based from top
                   const toRowIndex = totalUnits - cord.toU;
 
                   const y1 = fromRowIndex * unitRowHeight + unitRowHeight / 2;
                   const y2 = toRowIndex * unitRowHeight + unitRowHeight / 2;
 
-                  // Right routing gutter x coordinate
-                  const xRight = 680;
-                  const xOffset = (idx % 6) * 6; // stagger cables in the vertical channel
-                  const cableRightX = xRight + xOffset;
+                  // Responsive patch cord coordinates calculated from actual rackContainer width
+                  const connectorX = Math.max(220, rackWidth - 75);
+                  const gutterX = Math.max(240, rackWidth - 30);
+                  const xOffset = (idx % 5) * 5; // stagger cables in the vertical channel
+                  const cableRightX = gutterX + xOffset;
 
                   const isHighlighted = selectedCable?.id === cord.id;
                   const isDimmed = selectedCable && selectedCable.id !== cord.id;
 
                   // Cubic bezier curve path entering the side wire management channel and returning
-                  const pathD = `M 620,${y1} C ${cableRightX},${y1} ${cableRightX},${y2} 620,${y2}`;
+                  const pathD = `M ${connectorX},${y1} C ${cableRightX},${y1} ${cableRightX},${y2} ${connectorX},${y2}`;
 
                   return (
                     <g key={cord.id} className="cursor-pointer pointer-events-auto">
@@ -686,11 +910,42 @@ export function RackView({
                         className="transition-all hover:stroke-width-4 hover:stroke-opacity-100"
                       />
                       {/* RJ-45 Boot Connector dots */}
-                      <circle cx="620" cy={y1} r="3" fill={cord.color} opacity={isDimmed ? 0.2 : 0.9} />
-                      <circle cx="620" cy={y2} r="3" fill={cord.color} opacity={isDimmed ? 0.2 : 0.9} />
+                      <circle cx={connectorX} cy={y1} r="3" fill={cord.color} opacity={isDimmed ? 0.2 : 0.9} />
+                      <circle cx={connectorX} cy={y2} r="3" fill={cord.color} opacity={isDimmed ? 0.2 : 0.9} />
                     </g>
                   );
                 })}
+
+                {/* Live Rubber-Band Patch Cord when dragging/cabling */}
+                {cablingSource && (
+                  <g className="pointer-events-none">
+                    {(() => {
+                      const fromRow = totalUnits - cablingSource.uNumber;
+                      const y1 = fromRow * unitRowHeight + unitRowHeight / 2;
+                      const x1 = Math.max(200, rackWidth - 95);
+                      const x2 = mousePos.x || Math.max(220, rackWidth - 75);
+                      const y2 = mousePos.y || y1;
+                      const midX = Math.max(x1, x2) + 30;
+                      const pathD = `M ${x1},${y1} C ${midX},${y1} ${midX},${y2} ${x2},${y2}`;
+                      return (
+                        <>
+                          <path
+                            d={pathD}
+                            fill="none"
+                            stroke="#f59e0b"
+                            strokeWidth="3.5"
+                            strokeDasharray="6 3"
+                            strokeLinecap="round"
+                            filter="url(#glow)"
+                            className="animate-pulse"
+                          />
+                          <circle cx={x1} cy={y1} r="4.5" fill="#f59e0b" />
+                          <circle cx={x2} cy={y2} r="5.5" fill="#f59e0b" />
+                        </>
+                      );
+                    })()}
+                  </g>
+                )}
               </svg>
             )}
 
@@ -707,6 +962,7 @@ export function RackView({
                 return (
                   <div
                     key={uNumber}
+                    id={`rack-unit-${uNumber}`}
                     style={{ height: `${unitRowHeight}px` }}
                     className={`flex items-center transition-colors relative ${
                       isCableActive
@@ -755,25 +1011,51 @@ export function RackView({
                               </div>
                             </div>
 
-                            {/* Mini Keystones Grid Preview */}
-                            <div className="hidden md:flex items-center gap-0.5 shrink-0 opacity-80">
-                              {Array.from({ length: 12 }).map((_, kIdx) => {
-                                const isPortPatched = (mountedDevice.ports || [])[kIdx]?.connectedSwitchId;
-                                return (
-                                  <div
-                                    key={kIdx}
-                                    className={`w-2.5 h-3.5 rounded-xs border flex items-center justify-center ${
-                                      isPortPatched
-                                        ? 'bg-amber-500/30 border-amber-500'
-                                        : 'bg-slate-300 dark:bg-slate-800 border-slate-400 dark:border-slate-700'
-                                    }`}
-                                    title={`Порт ${kIdx + 1}`}
-                                  >
-                                    <div className="w-1 h-1 bg-black/40 rounded-xs" />
-                                  </div>
-                                );
-                              })}
-                            </div>
+                            {/* Mini Keystones Grid Preview or Interactive Port Strip */}
+                            {isCablingMode ? (
+                              <div className="flex items-center gap-1 shrink-0 overflow-x-auto max-w-sm py-0.5" onClick={(e) => e.stopPropagation()}>
+                                {(mountedDevice.ports || []).slice(0, 16).map((p, kIdx) => {
+                                  const isConnected = !!p.connectedSwitchId;
+                                  const isSource = cablingSource?.deviceId === mountedDevice.id && cablingSource?.portId === p.id;
+                                  return (
+                                    <button
+                                      key={p.id || kIdx}
+                                      type="button"
+                                      onClick={() => handlePortClick(mountedDevice, p)}
+                                      className={`w-4 h-5 rounded-xs border text-[8px] font-mono font-bold flex items-center justify-center transition-all cursor-pointer ${
+                                        isSource
+                                          ? 'bg-amber-400 text-black border-amber-300 ring-2 ring-amber-300 animate-pulse scale-110 z-10'
+                                          : isConnected
+                                          ? 'bg-amber-500/30 border-amber-400 text-amber-300 hover:bg-rose-500/40 hover:border-rose-400'
+                                          : 'bg-slate-300 dark:bg-slate-800 border-slate-400 dark:border-slate-700 text-slate-500 hover:bg-amber-400/40 hover:border-amber-400 hover:text-white'
+                                      }`}
+                                      title={`Порт ${p.number} (${p.socket || 'Розетка не указана'}) ${isConnected ? '— Скоммутирован' : '— Свободен для кроссировки'}`}
+                                    >
+                                      {p.number}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="hidden md:flex items-center gap-0.5 shrink-0 opacity-80">
+                                {Array.from({ length: 12 }).map((_, kIdx) => {
+                                  const isPortPatched = (mountedDevice.ports || [])[kIdx]?.connectedSwitchId;
+                                  return (
+                                    <div
+                                      key={kIdx}
+                                      className={`w-2.5 h-3.5 rounded-xs border flex items-center justify-center ${
+                                        isPortPatched
+                                          ? 'bg-amber-500/30 border-amber-500'
+                                          : 'bg-slate-300 dark:bg-slate-800 border-slate-400 dark:border-slate-700'
+                                      }`}
+                                      title={`Порт ${kIdx + 1}`}
+                                    >
+                                      <div className="w-1 h-1 bg-black/40 rounded-xs" />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
 
                             {/* Keystone count & Patched info */}
                             <div className="flex items-center gap-2 shrink-0">
@@ -871,26 +1153,54 @@ export function RackView({
                               </div>
                             </div>
 
-                            {/* Mini Port Matrix Preview */}
-                            <div className="hidden md:flex items-center gap-0.5 shrink-0 opacity-80">
-                              {Array.from({ length: 12 }).map((_, pIdx) => {
-                                const p = (mountedDevice.ports || [])[pIdx];
-                                const isUp = p?.enabled !== false && p?.mode !== 'disabled';
-                                return (
-                                  <div
-                                    key={pIdx}
-                                    className={`w-2.5 h-3.5 rounded-xs border flex items-center justify-center ${
-                                      isUp
-                                        ? 'bg-emerald-500/20 border-emerald-500'
-                                        : 'bg-slate-300 dark:bg-slate-800 border-slate-400 dark:border-slate-700'
-                                    }`}
-                                    title={`Порт ${pIdx + 1}`}
-                                  >
-                                    <div className={`w-1 h-1 rounded-full ${isUp ? 'bg-emerald-500' : 'bg-slate-500'}`} />
-                                  </div>
-                                );
-                              })}
-                            </div>
+                            {/* Mini Port Matrix Preview or Interactive Port Strip */}
+                            {isCablingMode ? (
+                              <div className="flex items-center gap-1 shrink-0 overflow-x-auto max-w-sm py-0.5" onClick={(e) => e.stopPropagation()}>
+                                {(mountedDevice.ports || []).slice(0, 16).map((p, pIdx) => {
+                                  const isLinked = !!p.linkedSwitchId;
+                                  const isPatchedFromPP = currentRackDevices.some(d => d.deviceType === 'patchPanel' && (d.ports || []).some(ppPort => ppPort.connectedSwitchId === mountedDevice.id && (ppPort.connectedSwitchPortId === p.id || ppPort.connectedSwitchPortId === p.number)));
+                                  const isConnected = isLinked || isPatchedFromPP;
+                                  const isSource = cablingSource?.deviceId === mountedDevice.id && (cablingSource?.portId === p.id || cablingSource?.portNumber === p.number);
+                                  return (
+                                    <button
+                                      key={p.id || pIdx}
+                                      type="button"
+                                      onClick={() => handlePortClick(mountedDevice, p)}
+                                      className={`w-4 h-5 rounded-xs border text-[8px] font-mono font-bold flex items-center justify-center transition-all cursor-pointer ${
+                                        isSource
+                                          ? 'bg-amber-400 text-black border-amber-300 ring-2 ring-amber-300 animate-pulse scale-110 z-10'
+                                          : isConnected
+                                          ? 'bg-blue-600 border-blue-400 text-white shadow-xs'
+                                          : 'bg-slate-300 dark:bg-slate-800 border-slate-400 dark:border-slate-700 text-slate-500 hover:bg-amber-400/40 hover:border-amber-400 hover:text-white'
+                                      }`}
+                                      title={`Порт ${p.name || p.number} ${isConnected ? '— Скоммутирован' : '— Свободен для кроссировки'}`}
+                                    >
+                                      {p.number}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="hidden md:flex items-center gap-0.5 shrink-0 opacity-80">
+                                {Array.from({ length: 12 }).map((_, pIdx) => {
+                                  const p = (mountedDevice.ports || [])[pIdx];
+                                  const isUp = p?.enabled !== false && p?.mode !== 'disabled';
+                                  return (
+                                    <div
+                                      key={pIdx}
+                                      className={`w-2.5 h-3.5 rounded-xs border flex items-center justify-center ${
+                                        isUp
+                                          ? 'bg-emerald-500/20 border-emerald-500'
+                                          : 'bg-slate-300 dark:bg-slate-800 border-slate-400 dark:border-slate-700'
+                                      }`}
+                                      title={`Порт ${pIdx + 1}`}
+                                    >
+                                      <div className={`w-1 h-1 rounded-full ${isUp ? 'bg-emerald-500' : 'bg-slate-500'}`} />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
 
                             {/* IP and Ports preview */}
                             <div className="flex items-center gap-2 shrink-0">
@@ -938,6 +1248,24 @@ export function RackView({
           </div>
         </div>
       </div>
+
+      {/* Floating Scroll to Top helper when navigating 42 units */}
+      <button
+        onClick={() => rackContainerRef.current?.scrollIntoView({ behavior: 'smooth' })}
+        className="fixed bottom-6 left-6 z-30 px-3 py-2 rounded-xl bg-slate-900/90 dark:bg-slate-800/90 border border-slate-700 text-slate-200 hover:text-white hover:bg-blue-600 dark:hover:bg-blue-600 shadow-xl transition-all cursor-pointer hidden sm:flex items-center gap-1.5 text-xs font-semibold backdrop-blur-md"
+        title="Прокрутить к началу стойки"
+      >
+        <Layers className="w-3.5 h-3.5 text-blue-400" />
+        <span>К началу 42U</span>
+      </button>
+
+      {/* Floating Cabling Toast Notification */}
+      {cablingToast && (
+        <div className="fixed bottom-6 right-6 z-50 p-3.5 bg-emerald-600 text-white font-semibold text-xs rounded-xl shadow-2xl flex items-center gap-2 animate-in slide-in-from-bottom duration-200">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>{cablingToast}</span>
+        </div>
+      )}
     </div>
   );
 }

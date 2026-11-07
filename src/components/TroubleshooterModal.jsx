@@ -28,6 +28,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { api } from '../api';
+import { useToast } from '../context/ToastContext';
 
 export default function TroubleshooterModal({
   isOpen,
@@ -39,6 +40,7 @@ export default function TroubleshooterModal({
   onReloadData,
   theme = 'dark'
 }) {
+  const toast = useToast();
   if (!isOpen) return null;
 
   const isLight = theme === 'light';
@@ -97,7 +99,7 @@ export default function TroubleshooterModal({
         runDiagnostics(selectedSwitchId);
       }, 700);
     } catch (err) {
-      alert(`Ошибка применения исправления: ${err.message}`);
+      toast.error(`Ошибка применения исправления: ${err.message}`);
     } finally {
       setFixingId(null);
     }

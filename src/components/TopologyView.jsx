@@ -33,11 +33,19 @@ import {
   Plus,
   User,
   Search,
-  X
+  X,
+  ShieldCheck,
+  Award,
+  Lock,
+  Unlock,
+  Shield,
+  Info
 } from 'lucide-react';
 import { VlanBadge } from './VlanBadge';
 import { checkVlanMismatch } from '../utils/vlanMismatch';
+import { calculateSpanningTree } from '../utils/stpSimulator';
 import { api, getAuthToken } from '../api';
+import { useToast } from '../context/ToastContext';
 
 export function TopologyView({
   switches = [],
@@ -54,6 +62,7 @@ export function TopologyView({
   onNavigateToIpam,
   theme = 'dark'
 }) {
+  const toast = useToast();
   const containerRef = useRef(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -101,6 +110,13 @@ export function TopologyView({
   const [telemetryBySwitch, setTelemetryBySwitch] = useState({});
   const [isAutoPoll, setIsAutoPoll] = useState(true);
 
+  // STP Simulator State
+  const [stpSimulationActive, setStpSimulationActive] = useState(false);
+  const [showLegend, setShowLegend] = useState(false);
+  const [stpManualRootId, setStpManualRootId] = useState(null);
+  const [stpProtocol, setStpProtocol] = useState('rstp'); // 'rstp' | 'stp'
+  const [stpDisabledLinks, setStpDisabledLinks] = useState(new Set());
+
   // LLDP Auto-link discovery state
   const [isLldpModalOpen, setIsLldpModalOpen] = useState(false);
   const [lldpLoading, setLldpLoading] = useState(false);
@@ -127,11 +143,12 @@ export function TopologyView({
     setApplyingLinkId(link.id);
     try {
       await api.applyLldpLink(link);
+      toast.success('LLDP линк успешно применен');
       if (onReloadData) await onReloadData();
       const updated = await api.getLldpTopology({ mode: 'auto' });
       setLldpData(updated);
     } catch (err) {
-      alert(`Ошибка применения линка: ${err.message}`);
+      toast.error(`Ошибка применения линка: ${err.message}`);
     } finally {
       setApplyingLinkId(null);
     }
@@ -144,11 +161,12 @@ export function TopologyView({
     setIsApplyingAll(true);
     try {
       await api.applyAllLldpLinks(newLinks);
+      toast.success(`Применено новых LLDP связей: ${newLinks.length}`);
       if (onReloadData) await onReloadData();
       const updated = await api.getLldpTopology({ mode: 'auto' });
       setLldpData(updated);
     } catch (err) {
-      alert(`Ошибка пакетного связывания: ${err.message}`);
+      toast.error(`Ошибка пакетного связывания: ${err.message}`);
     } finally {
       setIsApplyingAll(false);
     }
@@ -377,6 +395,38 @@ export function TopologyView({
 
     return linkList;
   }, [switches, telemetryBySwitch]);
+
+  // STP Spanning Tree Topology Calculation
+  const stpCalculation = useMemo(() => {
+    if (!stpSimulationActive) return null;
+
+    const stpLinks = physicalLinks.map(lnk => {
+      const swAId = String(lnk.sourceSwitch.id);
+      const swBId = String(lnk.targetSwitch.id);
+      const pANum = lnk.sourcePort.number || 0;
+      const pBNum = lnk.targetPort.number || 0;
+      const key = swAId < swBId ? `${swAId}:${pANum}-${swBId}:${pBNum}` : `${swBId}:${pBNum}-${swAId}:${pANum}`;
+      return {
+        id: lnk.id,
+        stpKey: key,
+        switchAId: swAId,
+        switchBId: swBId,
+        switchAName: lnk.sourceSwitch.name,
+        switchBName: lnk.targetSwitch.name,
+        portA: lnk.sourcePort,
+        portB: lnk.targetPort,
+        cost: lnk.is40G ? 1 : lnk.is10G ? 2 : lnk.is100M ? 19 : 4
+      };
+    });
+
+    return calculateSpanningTree({
+      switches,
+      links: stpLinks,
+      manualRootId: stpManualRootId,
+      disabledLinkIds: stpDisabledLinks,
+      protocol: stpProtocol
+    });
+  }, [stpSimulationActive, switches, physicalLinks, stpManualRootId, stpDisabledLinks, stpProtocol]);
 
   // Bottleneck & Single Point of Failure (SPOF) Analysis
   const bottleneckAnalysis = useMemo(() => {
@@ -770,7 +820,7 @@ export function TopologyView({
   const handleSaveNewWorkstation = async (e) => {
     e.preventDefault();
     if (!newWsHostname.trim() && !newWsIp.trim()) {
-      alert('Укажите имя компьютера или IP-адрес');
+      toast.warning('Укажите имя компьютера или IP-адрес');
       return;
     }
 
@@ -811,6 +861,7 @@ export function TopologyView({
       });
 
       if (res.ok) {
+        toast.success(`Рабочая станция «${payload.hostname || payload.ip}» добавлена`);
         setIsAddWorkstationOpen(false);
         setNewWsHostname('');
         setNewWsIp('');
@@ -822,10 +873,10 @@ export function TopologyView({
         }
       } else {
         const err = await res.json();
-        alert(`Ошибка создания ПК: ${err.error || 'Неизвестная ошибка'}`);
+        toast.error(`Ошибка создания ПК: ${err.error || 'Неизвестная ошибка'}`);
       }
     } catch (err) {
-      alert(`Ошибка сети: ${err.message}`);
+      toast.error(`Ошибка сети: ${err.message}`);
     } finally {
       setIsSubmittingWs(false);
     }
@@ -1088,7 +1139,7 @@ export function TopologyView({
         </div>
 
         {/* Toolbar Controls */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap overflow-x-auto max-w-full pb-1 scrollbar-none">
           {/* L2 / L3 Layer Toggle */}
           <div className={`h-9 p-0.5 rounded-xl border flex items-center shrink-0 ${
             isLight ? 'bg-slate-100 border-slate-300' : 'bg-slate-950 border-slate-800'
@@ -1260,6 +1311,27 @@ export function TopologyView({
           >
             <Radio className="w-3.5 h-3.5 text-purple-400" />
             <span>LLDP Автолинк</span>
+          </button>
+
+          {/* STP / Loop Simulator Toggle */}
+          <button
+            onClick={() => setStpSimulationActive(!stpSimulationActive)}
+            className={`h-9 px-3 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 whitespace-nowrap ${
+              stpSimulationActive
+                ? 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-600/30 ring-2 ring-amber-400/50'
+                : isLight
+                ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-300'
+                : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border-amber-500/30'
+            }`}
+            title="Симулятор протокола Spanning Tree (RSTP / 802.1w), блокировки петель и аварийного пересчёта линков"
+          >
+            <Shield className="w-3.5 h-3.5 text-amber-400" />
+            <span>STP Симулятор</span>
+            {stpCalculation && stpCalculation.blockedLinksCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-amber-500 text-slate-950">
+                {stpCalculation.blockedLinksCount} BLK
+              </span>
+            )}
           </button>
 
           {/* Bottleneck & SPOF Analysis Button */}
@@ -1442,6 +1514,91 @@ export function TopologyView({
         </div>
       )}
 
+      {/* STP Simulation Interactive Control Sub-bar */}
+      {stpSimulationActive && (
+        <div className={`flex flex-wrap items-center justify-between gap-3 py-2 px-3 border-b text-xs shrink-0 ${
+          isLight ? 'bg-amber-50/90 border-amber-200' : 'bg-amber-950/20 border-amber-500/30'
+        }`}>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <span className="font-bold flex items-center gap-1.5 text-amber-500">
+              <ShieldCheck className="w-4 h-4 text-amber-400" />
+              <span>STP Топология:</span>
+            </span>
+
+            {/* Root Bridge Selector */}
+            <div className="flex items-center gap-1.5 font-mono">
+              <span className="text-[11px] text-slate-400">Root Bridge:</span>
+              <select
+                value={stpManualRootId || ''}
+                onChange={(e) => setStpManualRootId(e.target.value || null)}
+                className={`h-7 px-2 rounded-md border text-[11px] font-mono outline-none cursor-pointer ${
+                  isLight ? 'bg-white border-amber-300 text-slate-800' : 'bg-slate-900 border-amber-500/40 text-amber-300'
+                }`}
+              >
+                <option value="">Автовыбор (Lowest Priority / MAC)</option>
+                {switches.map(sw => (
+                  <option key={sw.id} value={sw.id}>
+                    {sw.name} ({sw.ip || 'no ip'})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Protocol */}
+            <div className="flex items-center gap-1 font-mono text-[11px]">
+              <span className="text-slate-400">Протокол:</span>
+              <div className="flex rounded-md border border-slate-700 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setStpProtocol('rstp')}
+                  className={`px-2 py-0.5 ${stpProtocol === 'rstp' ? 'bg-amber-600 text-white font-bold' : 'bg-slate-900 text-slate-400'}`}
+                >
+                  802.1w RSTP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStpProtocol('stp')}
+                  className={`px-2 py-0.5 ${stpProtocol === 'stp' ? 'bg-amber-600 text-white font-bold' : 'bg-slate-900 text-slate-400'}`}
+                >
+                  802.1D STP
+                </button>
+              </div>
+            </div>
+
+            {/* Convergence & Stats */}
+            {stpCalculation && (
+              <div className="flex items-center gap-2 text-[11px] font-mono">
+                <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+                  FWD: {stpCalculation.activeLinksCount}
+                </span>
+                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold">
+                  BLK: {stpCalculation.blockedLinksCount}
+                </span>
+                <span className="text-slate-400">
+                  Сходимость: <strong className="text-white">{stpCalculation.convergenceTime}</strong>
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {stpDisabledLinks.size > 0 && (
+              <button
+                type="button"
+                onClick={() => setStpDisabledLinks(new Set())}
+                className="h-7 px-2.5 rounded-md bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Восстановить обрывы ({stpDisabledLinks.size})</span>
+              </button>
+            )}
+            <span className="text-[11px] text-amber-400/90 font-medium">
+              💡 Кликните по зелёному линку, чтобы смоделировать обрыв
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* SVG Canvas Area */}
       <div
         ref={containerRef}
@@ -1532,7 +1689,13 @@ export function TopologyView({
 
             const isBottleneck = showBottlenecks && bottleneckAnalysis.bandwidthBottlenecks.some(b => b.linkId === link.id);
 
-            const strokeColor = link.hasMismatch
+            // STP Link Simulation State
+            const stpLinkState = stpSimulationActive && stpCalculation ? stpCalculation.linkStates[link.id] : null;
+            const isStpBlocked = Boolean(stpLinkState?.isBlocked);
+            const isStpFailed = Boolean(stpLinkState?.isFailed);
+            const isStpForwarding = Boolean(stpLinkState?.isForwarding);
+
+            const baseStrokeColor = link.hasMismatch
               ? '#ef4444'
               : isBottleneck
               ? '#f43f5e'
@@ -1551,6 +1714,14 @@ export function TopologyView({
               : link.is100M
               ? '#f59e0b' // Amber 100M
               : (isLight ? '#10b981' : '#34d399'); // Emerald 1G
+
+            const strokeColor = isStpFailed
+              ? '#ef4444'
+              : isStpBlocked
+              ? '#f59e0b'
+              : isStpForwarding
+              ? '#10b981'
+              : baseStrokeColor;
 
             const strokeWidth = isHovered
               ? 5.5
@@ -1574,6 +1745,15 @@ export function TopologyView({
                 }`}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (stpSimulationActive) {
+                    setStpDisabledLinks(prev => {
+                      const next = new Set(prev);
+                      if (next.has(link.id)) next.delete(link.id);
+                      else next.add(link.id);
+                      return next;
+                    });
+                    return;
+                  }
                   setSelectedLink(link);
                 }}
               >
@@ -1585,13 +1765,14 @@ export function TopologyView({
                   d={pathD}
                   fill="none"
                   stroke={strokeColor}
-                  strokeWidth={strokeWidth}
+                  strokeWidth={isStpBlocked ? 3 : strokeWidth}
+                  strokeDasharray={isStpBlocked ? '6 6' : isStpFailed ? '4 4' : undefined}
                   strokeLinecap="round"
-                  filter={link.hasMismatch || isBottleneck ? 'url(#glow-error)' : (isTracedPath || isHovered) ? 'url(#glow-path)' : 'url(#glow-healthy)'}
+                  filter={link.hasMismatch || isBottleneck || isStpFailed ? 'url(#glow-error)' : isStpBlocked ? 'url(#glow-path)' : (isTracedPath || isHovered) ? 'url(#glow-path)' : 'url(#glow-healthy)'}
                 />
 
                 {/* Animated Flow with traffic-proportional pulse particles and dynamic speed */}
-                {trafficAnimation && !link.hasMismatch && (
+                {trafficAnimation && !link.hasMismatch && !isStpBlocked && !isStpFailed && (
                   <path
                     d={pathD}
                     fill="none"
@@ -1608,21 +1789,38 @@ export function TopologyView({
                 <circle cx={x1} cy={y1} r={isHovered ? 4.5 : 3} fill={strokeColor} stroke="#ffffff" strokeWidth="1" />
                 <circle cx={x2} cy={y2} r={isHovered ? 4.5 : 3} fill={strokeColor} stroke="#ffffff" strokeWidth="1" />
 
-                {/* Link Badge in compact mode, or if hovered, or if traffic is active */}
-                {(nodeViewMode === 'compact' || isHovered || isTracedPath || link.hasMismatch || (trafficAnimation && link.totalMbps > 0)) && (
+                {/* Link Badge in compact mode, or if hovered, or if traffic is active, or if STP simulation is on */}
+                {(stpSimulationActive || nodeViewMode === 'compact' || isHovered || isTracedPath || link.hasMismatch || (trafficAnimation && link.totalMbps > 0)) && (
                   <g transform={`translate(${midX}, ${midY})`}>
                     <rect
-                      x="-65"
+                      x={stpSimulationActive ? "-80" : "-65"}
                       y="-12"
-                      width="130"
+                      width={stpSimulationActive ? "160" : "130"}
                       height="24"
                       rx="7"
                       fill={isLight ? '#ffffff' : '#0f172a'}
-                      stroke={link.hasMismatch ? '#ef4444' : link.utilizationPct > 80 ? '#f43f5e' : strokeColor}
-                      strokeWidth="1.5"
+                      stroke={isStpFailed ? '#ef4444' : isStpBlocked ? '#f59e0b' : isStpForwarding ? '#10b981' : (link.hasMismatch ? '#ef4444' : link.utilizationPct > 80 ? '#f43f5e' : strokeColor)}
+                      strokeWidth={isStpBlocked ? "2" : "1.5"}
+                      strokeDasharray={isStpBlocked ? "4 3" : undefined}
                       className="shadow-md"
                     />
-                    {link.hasMismatch ? (
+                    {stpSimulationActive && stpLinkState ? (
+                      <text
+                        x="0"
+                        y="3.5"
+                        textAnchor="middle"
+                        fill={isStpFailed ? '#ef4444' : isStpBlocked ? '#f59e0b' : '#10b981'}
+                        fontSize="9"
+                        fontFamily="Ubuntu Mono, monospace"
+                        fontWeight="bold"
+                      >
+                        {isStpFailed
+                          ? '❌ Оборван (Клик=Вкл)'
+                          : isStpBlocked
+                          ? `🔒 STP BLK (${stpLinkState.roleA || 'BLK'})`
+                          : `✅ [${stpLinkState.roleA}]⇄[${stpLinkState.roleB}] FWD`}
+                      </text>
+                    ) : link.hasMismatch ? (
                       <text
                         x="0"
                         y="4"
@@ -1972,6 +2170,21 @@ export function TopologyView({
                   isDimmed ? 'opacity-20 grayscale' : 'opacity-100'
                 }`}
               >
+                {/* STP Root Bridge / Path Cost Badge */}
+                {stpSimulationActive && stpCalculation?.switchStates[String(sw.id)] && (
+                  <div className="absolute -top-3.5 left-4 z-40 pointer-events-none">
+                    {stpCalculation.switchStates[String(sw.id)].isRoot ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-bold text-[10px] flex items-center gap-1 shadow-lg shadow-amber-500/50 ring-2 ring-white/50 animate-pulse">
+                        👑 ROOT BRIDGE (Prio {stpCalculation.switchStates[String(sw.id)].priority})
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full bg-slate-950/90 text-amber-300 border border-amber-500/40 text-[9px] font-mono flex items-center gap-1 shadow-md">
+                        Cost: {stpCalculation.switchStates[String(sw.id)].pathCost} {stpCalculation.switchStates[String(sw.id)].rootPort && `• RP: ${stpCalculation.switchStates[String(sw.id)].rootPort}`}
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {/* Node Header */}
                 <div className="p-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
@@ -2652,28 +2865,40 @@ export function TopologyView({
         )}
 
         {/* Speed & Link Legend (Bottom Left) */}
-        <div className={`absolute bottom-4 left-4 z-20 p-2.5 rounded-xl border shadow-lg backdrop-blur-md text-[11px] font-mono flex items-center gap-3.5 flex-wrap ${
-          isLight ? 'bg-white/90 border-slate-300 text-slate-700' : 'bg-slate-900/90 border-slate-800 text-slate-300'
-        }`}>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1 bg-blue-500 rounded-full" />
-            <span>40G Uplink</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1 bg-purple-500 rounded-full" />
-            <span>10G SFP+</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1 bg-emerald-500 rounded-full" />
-            <span>1G Медь</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1 bg-amber-500 rounded-full" />
-            <span>100M</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1 bg-indigo-500 rounded-full" />
-            <span>LAG (LACP)</span>
+        <div className="absolute bottom-4 left-4 z-20 flex flex-col items-start gap-1">
+          <button
+            onClick={() => setShowLegend(!showLegend)}
+            className={`xl:hidden h-8 px-2.5 rounded-xl border text-xs font-mono flex items-center gap-1.5 shadow-md backdrop-blur-md cursor-pointer ${
+              isLight ? 'bg-white/95 border-slate-300 text-slate-700' : 'bg-slate-900/95 border-slate-800 text-slate-300'
+            }`}
+            title="Показать легенду скоростей линков"
+          >
+            <Info className="w-3.5 h-3.5 text-blue-500" />
+            <span>Легенда</span>
+          </button>
+          <div className={`${showLegend ? 'flex' : 'hidden xl:flex'} p-2.5 rounded-xl border shadow-lg backdrop-blur-md text-[11px] font-mono items-center gap-3.5 flex-wrap ${
+            isLight ? 'bg-white/90 border-slate-300 text-slate-700' : 'bg-slate-900/90 border-slate-800 text-slate-300'
+          }`}>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3.5 h-1 bg-blue-500 rounded-full" />
+              <span>40G Uplink</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3.5 h-1 bg-purple-500 rounded-full" />
+              <span>10G SFP+</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3.5 h-1 bg-emerald-500 rounded-full" />
+              <span>1G Медь</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3.5 h-1 bg-amber-500 rounded-full" />
+              <span>100M</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3.5 h-1 bg-indigo-500 rounded-full" />
+              <span>LAG (LACP)</span>
+            </div>
           </div>
         </div>
 

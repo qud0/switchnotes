@@ -33,6 +33,7 @@ import { api } from '../api';
 import { SvgQrCode } from './SvgQrCode';
 import { PinoutGuideModal } from './PinoutGuideModal';
 import { BatchRenumberModal } from './BatchRenumberModal';
+import { useToast } from '../context/ToastContext';
 
 const CABLE_CATEGORIES = [
   'Cat.5e UTP (1 Gbps)',
@@ -66,6 +67,7 @@ export function CableJournalView({
   theme = 'dark'
 }) {
   const isLight = theme === 'light';
+  const toast = useToast();
 
   // Active view tab: 'journal' or 'label_maker'
   const [activeTab, setActiveTab] = useState('journal');
@@ -340,14 +342,15 @@ export function CableJournalView({
     try {
       if (editingLine.isServerLink) {
         // If server link, we update server nic role/notes
-        alert('Параметры серверного линка редактируются в карточке сервера во вкладке «Сетевые порты».');
+        toast.info('Параметры серверного линка редактируются в карточке сервера во вкладке «Сетевые порты».');
       } else {
         await api.updatePatchPanelPort(editingLine.panelId, editingLine.panelPortId, updateData);
+        toast.success('Кабельная линия успешно обновлена');
         if (onReloadData) onReloadData();
       }
       setIsEditModalOpen(false);
     } catch (err) {
-      alert(`Ошибка сохранения линии: ${err.message}`);
+      toast.error(`Ошибка сохранения линии: ${err.message}`);
     }
   };
 
@@ -624,11 +627,11 @@ export function CableJournalView({
         <div className={`rounded-2xl border overflow-hidden shadow-xs transition-colors ${
           isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
         }`}>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-[75vh] overflow-y-auto">
             <table className="w-full text-left border-collapse text-xs">
-              <thead>
+              <thead className="sticky top-0 z-10 shadow-xs">
                 <tr className={`border-b text-[11px] font-semibold uppercase tracking-wider ${
-                  isLight ? 'bg-slate-50 text-slate-500 border-slate-200' : 'bg-slate-950/70 text-slate-400 border-slate-800'
+                  isLight ? 'bg-slate-50/95 text-slate-700 border-slate-200 backdrop-blur-md' : 'bg-slate-950/95 text-slate-300 border-slate-800 backdrop-blur-md'
                 }`}>
                   <th className="py-3 px-3.5">Маркировка</th>
                   <th className="py-3 px-3.5">Помещение / Рабочее место</th>
@@ -642,7 +645,7 @@ export function CableJournalView({
                   <th className="py-3 px-3.5 text-right">Действия</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/40">
+              <tbody className={`divide-y ${isLight ? 'divide-slate-200' : 'divide-slate-800/40'}`}>
                 {filteredLines.length === 0 ? (
                   <tr>
                     <td colSpan="10" className="py-12 text-center text-slate-500">

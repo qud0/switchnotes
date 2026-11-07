@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api';
 import { generateSwitchConfig } from '../utils/configGenerator';
+import { useToast } from '../context/ToastContext';
 
 export default function NetworkToolsView({
   vlans = [],
@@ -22,6 +23,7 @@ export default function NetworkToolsView({
   theme = 'dark'
 }) {
   const isLight = theme === 'light';
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState('scanner'); // 'scanner', 'lldp', 'provision', 'ports', 'cidr', 'traceroute', 'poe'
 
   // =========================================================================
@@ -98,6 +100,7 @@ export default function NetworkToolsView({
       setAddSwitchSuccess(`Коммутатор "${addSwitchModal.name}" успешно добавлен в базу!`);
       setAddSwitchModal(null);
       if (onReloadSwitches) await onReloadSwitches();
+      toast.success(`Коммутатор «${addSwitchModal.name}» успешно добавлен`);
       // Update scanResults to reflect added state
       if (scanResults) {
         setScanResults(prev => ({
@@ -106,7 +109,7 @@ export default function NetworkToolsView({
         }));
       }
     } catch (err) {
-      alert(`Ошибка: ${err.message}`);
+      toast.error(`Ошибка: ${err.message}`);
     } finally {
       setAddingSwitch(false);
     }
@@ -146,11 +149,12 @@ export default function NetworkToolsView({
     try {
       await api.applyLldpLink(link);
       setAppliedLinksSuccess(prev => ({ ...prev, [link.id]: true }));
+      toast.success('LLDP линк успешно применен к коммутаторам');
       if (onReloadSwitches) await onReloadSwitches();
       // Re-fetch LLDP to refresh state
       await handleLoadLldpTopology();
     } catch (err) {
-      alert(`Ошибка применения линка: ${err.message}`);
+      toast.error(`Ошибка применения линка: ${err.message}`);
     } finally {
       setApplyingLink(null);
     }
@@ -324,9 +328,10 @@ export default function NetworkToolsView({
       });
 
       setDbApplySuccess(true);
+      toast.success('Параметры портов успешно обновлены в базе');
       if (onReloadSwitches) await onReloadSwitches();
     } catch (err) {
-      alert(`Ошибка обновления базы: ${err.message}`);
+      toast.error(`Ошибка обновления базы: ${err.message}`);
     }
   };
 
@@ -425,7 +430,7 @@ export default function NetworkToolsView({
       const res = await api.runTraceroute({ host: traceTarget.trim(), maxHops: 12 });
       setTraceResult(res);
     } catch (err) {
-      alert(`Ошибка трассировки: ${err.message}`);
+      toast.error(`Ошибка трассировки: ${err.message}`);
     } finally {
       setIsTracing(false);
     }
@@ -1546,21 +1551,25 @@ export default function NetworkToolsView({
       {/* ========================================================================= */}
       {activeTab === 'ports' && (
         <div className="space-y-4">
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+          <div className={`border rounded-2xl p-5 shadow-xl space-y-4 transition-colors ${
+            isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900/90 border-slate-800 text-slate-100'
+          }`}>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1.5">Хост или IP-адрес:</label>
+                <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 block mb-1.5">Хост или IP-адрес:</label>
                 <input
                   type="text"
                   value={portHost}
                   onChange={(e) => setPortHost(e.target.value)}
                   placeholder="192.168.10.1"
-                  className="w-full h-9 px-3 bg-slate-950/80 border border-slate-700 rounded-xl text-white font-mono text-xs outline-none focus:border-blue-500"
+                  className={`w-full h-9 px-3 border rounded-xl font-mono text-xs outline-none focus:border-blue-500 ${
+                    isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-slate-950/80 border-slate-700 text-white'
+                  }`}
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1.5">Профиль портов:</label>
+                <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 block mb-1.5">Профиль портов:</label>
                 <select
                   value={selectedProfile}
                   onChange={(e) => setSelectedProfile(e.target.value)}
@@ -1644,20 +1653,24 @@ export default function NetworkToolsView({
       {/* ========================================================================= */}
       {activeTab === 'cidr' && (
         <div className="space-y-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+          <div className={`border rounded-2xl p-5 shadow-xl space-y-4 transition-colors ${
+            isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900 border-slate-800 text-slate-100'
+          }`}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1.5">Базовый IP адрес:</label>
+                <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 block mb-1.5">Базовый IP адрес:</label>
                 <input
                   type="text"
                   value={cidrIp}
                   onChange={(e) => setCidrIp(e.target.value)}
-                  className="w-full h-9 px-3 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-xs outline-none"
+                  className={`w-full h-9 px-3 border rounded-xl font-mono text-xs outline-none ${
+                    isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-slate-950 border-slate-700 text-white'
+                  }`}
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1.5">Префикс маски (/{cidrPrefix}):</label>
+                <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 block mb-1.5">Префикс маски (/{cidrPrefix}):</label>
                 <input
                   type="range"
                   min="8"
@@ -1670,22 +1683,32 @@ export default function NetworkToolsView({
             </div>
 
             {cidrData && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-slate-800 text-xs">
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <div className={`grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t text-xs ${
+                isLight ? 'border-slate-200' : 'border-slate-800'
+              }`}>
+                <div className={`p-3 rounded-xl border ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
+                }`}>
                   <span className="text-slate-500 block mb-1">Адрес сети:</span>
-                  <span className="font-mono font-bold text-white text-sm">{cidrData.network}/{cidrData.prefix}</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white text-sm">{cidrData.network}/{cidrData.prefix}</span>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <div className={`p-3 rounded-xl border ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
+                }`}>
                   <span className="text-slate-500 block mb-1">Маска сети:</span>
-                  <span className="font-mono font-bold text-white text-sm">{cidrData.netmask}</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white text-sm">{cidrData.netmask}</span>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <div className={`p-3 rounded-xl border ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
+                }`}>
                   <span className="text-slate-500 block mb-1">Диапазон хостов:</span>
-                  <span className="font-mono font-bold text-emerald-400 text-xs">{cidrData.firstHost} — {cidrData.lastHost}</span>
+                  <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-xs">{cidrData.firstHost} — {cidrData.lastHost}</span>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <div className={`p-3 rounded-xl border ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
+                }`}>
                   <span className="text-slate-500 block mb-1">Доступных хостов:</span>
-                  <span className="font-mono font-bold text-blue-400 text-sm">{cidrData.usableHosts}</span>
+                  <span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-sm">{cidrData.usableHosts}</span>
                 </div>
               </div>
             )}
@@ -1698,13 +1721,17 @@ export default function NetworkToolsView({
       {/* ========================================================================= */}
       {activeTab === 'traceroute' && (
         <div className="space-y-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex items-center gap-4">
+          <div className={`border rounded-2xl p-5 shadow-xl flex items-center gap-4 transition-colors ${
+            isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900 border-slate-800 text-slate-100'
+          }`}>
             <input
               type="text"
               value={traceTarget}
               onChange={(e) => setTraceTarget(e.target.value)}
               placeholder="192.168.10.1"
-              className="flex-1 h-9 px-3 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-xs outline-none focus:border-blue-500"
+              className={`flex-1 h-9 px-3 border rounded-xl font-mono text-xs outline-none focus:border-blue-500 ${
+                isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-slate-950 border-slate-700 text-white'
+              }`}
             />
             <button
               type="button"
@@ -1718,13 +1745,17 @@ export default function NetworkToolsView({
           </div>
 
           {traceResult && (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl font-mono text-xs space-y-2">
-              <div className="text-slate-400 mb-2">Трассировка до {traceResult.host}:</div>
+            <div className={`border rounded-2xl p-4 shadow-xl font-mono text-xs space-y-2 transition-colors ${
+              isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
+            }`}>
+              <div className="text-slate-500 dark:text-slate-400 mb-2 font-sans font-semibold">Трассировка до {traceResult.host}:</div>
               {traceResult.hops?.map(h => (
-                <div key={h.hop} className="flex items-center gap-4 p-2 rounded-lg bg-slate-950 border border-slate-800">
-                  <span className="text-slate-500 w-8">#{h.hop}</span>
-                  <span className="text-white font-bold">{h.ip}</span>
-                  <span className="text-emerald-400">{h.rtt} мс</span>
+                <div key={h.hop} className={`flex items-center gap-4 p-2 rounded-lg border ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
+                }`}>
+                  <span className="text-slate-400 w-8">#{h.hop}</span>
+                  <span className="text-slate-900 dark:text-white font-bold">{h.ip}</span>
+                  <span className="text-emerald-500 font-semibold">{h.rtt} мс</span>
                 </div>
               ))}
             </div>
@@ -1737,17 +1768,23 @@ export default function NetworkToolsView({
       {/* ========================================================================= */}
       {activeTab === 'poe' && (
         <div className="space-y-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <span className="text-xs font-bold text-white">Бюджет блока питания PoE:</span>
+          <div className={`border rounded-2xl p-5 shadow-xl space-y-4 transition-colors ${
+            isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900 border-slate-800 text-slate-100'
+          }`}>
+            <div className={`flex items-center justify-between pb-3 border-b ${
+              isLight ? 'border-slate-200' : 'border-slate-800'
+            }`}>
+              <span className="text-xs font-bold text-slate-900 dark:text-white">Бюджет блока питания PoE:</span>
               <div className="flex items-center gap-2">
                 {[250, 370, 500, 740].map(w => (
                   <button
                     key={w}
                     type="button"
                     onClick={() => setPoePsuWatts(w)}
-                    className={`h-7 px-3 rounded-lg text-xs font-bold cursor-pointer ${
-                      poePsuWatts === w ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'
+                    className={`h-7 px-3 rounded-lg text-xs font-bold cursor-pointer transition-colors ${
+                      poePsuWatts === w
+                        ? 'bg-blue-600 text-white'
+                        : isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-slate-800 text-slate-400'
                     }`}
                   >
                     {w}W
@@ -1764,27 +1801,35 @@ export default function NetworkToolsView({
                 { key: 'voipPhone', label: 'VoIP Телефоны (4W)', watts: 4 },
                 { key: 'intercom', label: 'Домофоны (12W)', watts: 12 }
               ].map(item => (
-                <div key={item.key} className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-                  <span className="text-slate-400 block">{item.label}</span>
+                <div key={item.key} className={`p-3 rounded-xl border space-y-2 transition-colors ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
+                }`}>
+                  <span className="text-slate-500 dark:text-slate-400 block">{item.label}</span>
                   <input
                     type="number"
                     min="0"
                     max="48"
                     value={poeLoads[item.key]}
                     onChange={(e) => setPoeLoads(prev => ({ ...prev, [item.key]: parseInt(e.target.value) || 0 }))}
-                    className="w-full h-8 px-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono font-bold"
+                    className={`w-full h-8 px-2 rounded-lg border font-mono font-bold ${
+                      isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                    }`}
                   />
                 </div>
               ))}
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+            <div className={`p-4 rounded-xl border flex items-center justify-between transition-colors ${
+              isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
+            }`}>
               <div>
-                <div className="text-xs text-slate-400">Нагрузка:</div>
-                <div className="text-lg font-bold text-white">{poeSummary.totalWatts}W из {poePsuWatts}W ({poeSummary.percent}%)</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">Нагрузка:</div>
+                <div className="text-lg font-bold font-mono text-slate-900 dark:text-white">
+                  {poeSummary.totalWatts}W из {poePsuWatts}W ({poeSummary.percent}%)
+                </div>
               </div>
               <div className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
-                poeSummary.isOverload ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                poeSummary.isOverload ? 'bg-rose-500/20 text-rose-600 dark:text-rose-300 border border-rose-500/30' : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30'
               }`}>
                 {poeSummary.isOverload ? 'ПЕРЕГРУЗКА БЛОКА ПИТАНИЯ' : `Свободно: ${poeSummary.remainingWatts}W`}
               </div>

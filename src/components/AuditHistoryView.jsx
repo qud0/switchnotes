@@ -24,6 +24,7 @@ import {
   Info
 } from 'lucide-react';
 import { api } from '../api';
+import { useToast } from '../context/ToastContext';
 
 export default function AuditHistoryView({
   switches = [],
@@ -32,6 +33,7 @@ export default function AuditHistoryView({
   theme = 'dark'
 }) {
   const isLight = theme === 'light';
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState('snapshots'); // 'snapshots' | 'audit'
 
   // Snapshots State
@@ -100,10 +102,11 @@ export default function AuditHistoryView({
       setNewSnapName('');
       setNewSnapDesc('');
       setIsCreateModalOpen(false);
+      toast.success(`Контрольная точка «${newSnapName.trim()}» успешно создана`);
       await loadSnapshots();
       await loadAuditLogs();
     } catch (err) {
-      alert(`Ошибка создания снимка: ${err.message}`);
+      toast.error(`Ошибка создания снимка: ${err.message}`);
     } finally {
       setCreatingSnap(false);
     }
@@ -113,10 +116,11 @@ export default function AuditHistoryView({
     if (!window.confirm(`Удалить снимок конфигурации «${name}»?`)) return;
     try {
       await api.deleteSnapshot(id);
+      toast.success(`Снимок «${name}» удален`);
       await loadSnapshots();
       await loadAuditLogs();
     } catch (err) {
-      alert(`Ошибка удаления: ${err.message}`);
+      toast.error(`Ошибка удаления: ${err.message}`);
     }
   };
 
@@ -127,12 +131,12 @@ export default function AuditHistoryView({
     try {
       setRestoringId(id);
       await api.restoreSnapshot(id);
-      alert(`Конфигурация успешно восстановлена из снимка «${name}»!`);
+      toast.success(`Конфигурация успешно восстановлена из снимка «${name}»!`);
       if (onRestoreCompleted) onRestoreCompleted();
       await loadSnapshots();
       await loadAuditLogs();
     } catch (err) {
-      alert(`Ошибка восстановления: ${err.message}`);
+      toast.error(`Ошибка восстановления: ${err.message}`);
     } finally {
       setRestoringId(null);
     }
@@ -145,7 +149,7 @@ export default function AuditHistoryView({
       setSelectedDiff(diffData);
       setDiffModalOpen(true);
     } catch (err) {
-      alert(`Ошибка получения различий: ${err.message}`);
+      toast.error(`Ошибка получения различий: ${err.message}`);
     } finally {
       setLoadingDiff(false);
     }
@@ -155,9 +159,10 @@ export default function AuditHistoryView({
     if (!window.confirm('Очистить весь журнал действий аудита? Это действие необратимо.')) return;
     try {
       await api.clearAuditLog();
+      toast.success('Журнал аудита успешно очищен');
       await loadAuditLogs();
     } catch (err) {
-      alert(`Ошибка очистки журнала: ${err.message}`);
+      toast.error(`Ошибка очистки журнала: ${err.message}`);
     }
   };
 

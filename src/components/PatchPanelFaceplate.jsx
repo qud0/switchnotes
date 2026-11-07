@@ -22,6 +22,7 @@ export function PatchPanelFaceplate({
   onEditPanel,
   onDeletePanel,
   onJumpToSwitch,
+  onBackToList,
   theme = 'dark'
 }) {
   const [activeTab, setActiveTab] = useState('faceplate'); // 'faceplate' or 'journal'
@@ -123,6 +124,29 @@ export function PatchPanelFaceplate({
     <div className={`border rounded-2xl p-5 shadow-xl transition-colors space-y-6 ${
       isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900/90 border-slate-800 text-slate-100'
     }`}>
+      {/* Breadcrumbs Navigation */}
+      <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mb-2 select-none flex-wrap">
+        <button
+          onClick={() => onBackToList?.()}
+          className="hover:text-blue-500 font-medium flex items-center gap-1 cursor-pointer transition-colors"
+          title="Вернуться ко всем патч-панелям"
+        >
+          <span>Патч-панели</span>
+        </button>
+        <span>/</span>
+        {panelData.location && (
+          <>
+            <span className="text-slate-600 dark:text-slate-300 font-medium">
+              {panelData.location}
+            </span>
+            <span>/</span>
+          </>
+        )}
+        <span className="font-bold text-slate-900 dark:text-white font-mono">
+          {panelData.name}
+        </span>
+      </div>
+
       {/* Top Header Card */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-start gap-3">
@@ -376,6 +400,15 @@ export function PatchPanelFaceplate({
               </div>
             </div>
           )}
+
+          {/* Mobile scroll hint */}
+          <div className="lg:hidden flex items-center justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400 mb-2 px-1">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+              Панель 19" (920px)
+            </span>
+            <span className="text-[10px]">↔ Прокрутите для просмотра всех портов</span>
+          </div>
 
           {/* 19-INCH 1U PATCH PANEL HARDWARE CHASSIS */}
           <div className="w-full overflow-x-auto pb-4">

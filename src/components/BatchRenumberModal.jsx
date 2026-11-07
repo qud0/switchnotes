@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Tag, X, Check, RefreshCw, Hash, Sliders, Layers } from 'lucide-react';
 import { api } from '../api';
+import { useToast } from '../context/ToastContext';
 
 export function BatchRenumberModal({
   isOpen,
@@ -10,6 +11,7 @@ export function BatchRenumberModal({
   theme = 'dark'
 }) {
   const isLight = theme === 'light';
+  const toast = useToast();
 
   const [selectedPanelId, setSelectedPanelId] = useState(patchPanels[0]?.id || '');
   const [template, setTemplate] = useState('PP-{PANEL_NUM}:{PORT:2}');
@@ -89,10 +91,11 @@ export function BatchRenumberModal({
       }
 
       await Promise.all(updates);
+      toast.success('Маркировка портов успешно обновлена');
       if (onSuccess) onSuccess();
       onClose();
     } catch (err) {
-      alert(`Ошибка применения маркировки: ${err.message}`);
+      toast.error(`Ошибка применения маркировки: ${err.message}`);
     } finally {
       setIsSaving(false);
     }

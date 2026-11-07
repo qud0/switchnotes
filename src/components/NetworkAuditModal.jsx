@@ -16,6 +16,7 @@ import {
   Filter
 } from 'lucide-react';
 import { runNetworkAudit } from '../utils/networkAudit';
+import { useToast } from '../context/ToastContext';
 
 export function NetworkAuditModal({
   isOpen,
@@ -31,6 +32,7 @@ export function NetworkAuditModal({
   onQuickFix,
   theme
 }) {
+  const toast = useToast();
   const [selectedSeverity, setSelectedSeverity] = useState('all'); // 'all', 'error', 'warning', 'info'
   const [selectedCategory, setSelectedCategory] = useState('all'); // 'all', 'links', 'ipam', 'vlans', 'patchPanels', 'security'
   const [searchFilter, setSearchFilter] = useState('');
@@ -88,8 +90,9 @@ export function NetworkAuditModal({
       setFixingId(issue.id);
       await onQuickFix(issue.quickFix);
       setFixedIssueIds(prev => new Set([...prev, issue.id]));
+      toast.success('Исправление успешно применилось');
     } catch (err) {
-      alert(`Ошибка применения исправления: ${err.message}`);
+      toast.error(`Ошибка применения исправления: ${err.message}`);
     } finally {
       setFixingId(null);
     }

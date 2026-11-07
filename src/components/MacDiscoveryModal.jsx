@@ -5,6 +5,7 @@ import {
   Search, Copy, ExternalLink, HelpCircle, HardDrive
 } from 'lucide-react';
 import { api } from '../api';
+import { useToast } from '../context/ToastContext';
 
 export default function MacDiscoveryModal({
   isOpen,
@@ -13,6 +14,7 @@ export default function MacDiscoveryModal({
   onOpenDeviceTrace,
   onReloadSwitch
 }) {
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
@@ -85,7 +87,7 @@ export default function MacDiscoveryModal({
       // Deselect all
       setSelectedItems(new Set());
     } catch (err) {
-      alert(`Ошибка синхронизации: ${err.message}`);
+      toast.error(`Ошибка синхронизации: ${err.message}`);
     } finally {
       setSyncing(false);
     }

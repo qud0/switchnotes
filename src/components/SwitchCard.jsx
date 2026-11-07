@@ -2,12 +2,16 @@ import React from 'react';
 import { Server, MapPin, Globe, Zap, Link as LinkIcon, AlertTriangle, Terminal, Wrench } from 'lucide-react';
 import { checkVlanMismatch } from '../utils/vlanMismatch';
 
-export function SwitchCard({ switchItem, allSwitches = [], isSelected, onSelect, onOpenWebSsh, onOpenTroubleshoot, theme = 'dark' }) {
+export function SwitchCard({ switchItem, allSwitches = [], isSelected, onSelect, onOpenWebSsh, onOpenTroubleshoot, onOpenPoeModal, theme = 'dark' }) {
   const ports = switchItem.ports || [];
   const accessCount = ports.filter(p => p.mode === 'access').length;
   const trunkCount = ports.filter(p => p.mode === 'trunk').length;
   const poeCount = ports.filter(p => p.poe).length;
   const linkedCount = ports.filter(p => p.linkedSwitchId).length;
+
+  const usedPoeWatts = ports.reduce((acc, p) => acc + (p.poe ? (p.poeWatts !== undefined ? Number(p.poeWatts) : 12) : 0), 0);
+  const poeBudget = switchItem.poeBudget || (switchItem.poe ? 370 : 0);
+  const poePct = poeBudget > 0 ? Math.min(100, Math.round((usedPoeWatts / poeBudget) * 100)) : 0;
 
   // Check if any port on this switch has a mismatch with its peer
   const hasAnyMismatch = ports.some(p => {
@@ -145,10 +149,26 @@ export function SwitchCard({ switchItem, allSwitches = [], isSelected, onSelect,
             </span>
           )}
           {poeCount > 0 && (
-            <span className="text-amber-500 font-mono flex items-center">
-              <Zap className="w-3 h-3 fill-amber-500" />
-              {poeCount}
-            </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                if (onOpenPoeModal) {
+                  e.stopPropagation();
+                  onOpenPoeModal(switchItem.id);
+                }
+              }}
+              className={`font-mono text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 font-bold transition-all ${
+                poePct > 90
+                  ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30'
+                  : poePct > 75
+                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30'
+                  : 'bg-amber-500/10 text-amber-500 border border-amber-500/20 hover:bg-amber-500/20'
+              }`}
+              title="Открыть менеджер бюджета питания PoE"
+            >
+              <Zap className="w-2.5 h-2.5 fill-current" />
+              <span>{Math.round(usedPoeWatts)}W ({poeCount})</span>
+            </button>
           )}
         </div>
       </div>

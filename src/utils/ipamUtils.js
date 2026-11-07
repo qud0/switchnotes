@@ -84,3 +84,54 @@ export function findNextFreeIp(cidr, allocatedIps = [], dhcpRangeStr = '') {
 
   return '';
 }
+
+export function calculateWildcardMask(netmask) {
+  if (!netmask) return '0.0.0.0';
+  return netmask.split('.').map(octet => 255 - parseInt(octet, 10)).join('.');
+}
+
+/**
+ * Разделение подсети на 2 равные дочерние подсети (prefix + 1)
+ */
+export function splitSubnet(cidr) {
+  const parsed = parseSubnet(cidr);
+  if (!parsed || parsed.prefix >= 30) return null;
+
+  const newPrefix = parsed.prefix + 1;
+  const netL = ipToLong(parsed.network);
+  const halfSize = Math.pow(2, 32 - newPrefix);
+
+  const sub1 = `${longToIp(netL)}/${newPrefix}`;
+  const sub2 = `${longToIp(netL + halfSize)}/${newPrefix}`;
+
+  return [sub1, sub2];
+}
+
+/**
+ * Проверка возможности объединения двух смежных подсетей
+ */
+export function canJoinSubnets(cidr1, cidr2) {
+  const p1 = parseSubnet(cidr1);
+  const p2 = parseSubnet(cidr2);
+  if (!p1 || !p2 || p1.prefix !== p2.prefix || p1.prefix <= 8) return false;
+
+  const parentPrefix = p1.prefix - 1;
+  const parentMask = (~0 << (32 - parentPrefix)) >>> 0;
+  const l1 = ipToLong(p1.network);
+  const l2 = ipToLong(p2.network);
+
+  return ((l1 & parentMask) >>> 0) === ((l2 & parentMask) >>> 0);
+}
+
+/**
+ * Объединение двух смежных подсетей в родительскую (prefix - 1)
+ */
+export function joinSubnets(cidr1, cidr2) {
+  if (!canJoinSubnets(cidr1, cidr2)) return null;
+  const p1 = parseSubnet(cidr1);
+  const parentPrefix = p1.prefix - 1;
+  const parentMask = (~0 << (32 - parentPrefix)) >>> 0;
+  const parentNetL = (ipToLong(p1.network) & parentMask) >>> 0;
+
+  return `${longToIp(parentNetL)}/${parentPrefix}`;
+}

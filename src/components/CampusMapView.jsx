@@ -35,6 +35,7 @@ import {
   Info
 } from 'lucide-react';
 import { api } from '../api';
+import { useToast } from '../context/ToastContext';
 import { calculateDistanceMeters, calculateOpticalBudget, FIBER_STANDARDS } from '../utils/opticalBudget';
 
 const BUILDING_TYPES = [
@@ -66,6 +67,7 @@ export default function CampusMapView({
   theme = 'dark'
 }) {
   const isLight = theme === 'light';
+  const toast = useToast();
   const containerRef = useRef(null);
 
   const [zoom, setZoom] = useState(1);
@@ -278,9 +280,10 @@ export default function CampusMapView({
     try {
       await api.updateBuilding(targetId, { uplinkTo: srcId });
       setLinkingSourceId(null);
+      toast.success('Магистральный линк между зданиями сохранен');
       if (onReloadBuildings) await onReloadBuildings();
     } catch (err) {
-      alert(`Ошибка соединения: ${err.message}`);
+      toast.error(`Ошибка соединения: ${err.message}`);
     }
   };
 
@@ -322,16 +325,17 @@ export default function CampusMapView({
     try {
       await api.deleteBuilding(id);
       setSelectedBuildingId(null);
+      toast.success('Здание удалено с карты');
       if (onReloadBuildings) await onReloadBuildings();
     } catch (err) {
-      alert(`Ошибка удаления: ${err.message}`);
+      toast.error(`Ошибка удаления: ${err.message}`);
     }
   };
 
   const handleSubmitBuilding = async (e) => {
     e.preventDefault();
     if (!formName.trim()) {
-      alert('Укажите наименование здания');
+      toast.warning('Укажите наименование здания');
       return;
     }
 
@@ -353,14 +357,16 @@ export default function CampusMapView({
 
       if (editingBuilding) {
         await api.updateBuilding(editingBuilding.id, payload);
+        toast.success(`Здание «${payload.name}» обновлено`);
       } else {
         await api.createBuilding(payload);
+        toast.success(`Здание «${payload.name}» добавлено`);
       }
 
       setIsModalOpen(false);
       if (onReloadBuildings) await onReloadBuildings();
     } catch (err) {
-      alert(`Ошибка сохранения: ${err.message}`);
+      toast.error(`Ошибка сохранения: ${err.message}`);
     } finally {
       setIsSubmitting(false);
     }

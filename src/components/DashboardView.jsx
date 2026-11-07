@@ -15,6 +15,7 @@ export default function DashboardView({
   onSelectSwitch,
   onOpenAuditModal,
   onOpenMacDiscovery,
+  onOpenPoeModal,
   theme = 'dark'
 }) {
   const [loading, setLoading] = useState(false);
@@ -128,9 +129,23 @@ export default function DashboardView({
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Health Index */}
-        <div className={`p-5 rounded-2xl border shadow-xl flex flex-col justify-between transition-colors ${
-          isLight ? 'bg-white border-slate-200' : 'bg-slate-900/90 border-slate-800'
-        }`}>
+        <div
+          onClick={onOpenAuditModal}
+          role={onOpenAuditModal ? "button" : undefined}
+          tabIndex={onOpenAuditModal ? 0 : undefined}
+          onKeyDown={(e) => {
+            if ((e.key === 'Enter' || e.key === ' ') && onOpenAuditModal) {
+              e.preventDefault();
+              onOpenAuditModal();
+            }
+          }}
+          title={onOpenAuditModal ? "Открыть детальный аудит сети" : undefined}
+          className={`p-5 rounded-2xl border shadow-xl flex flex-col justify-between transition-all ${
+            onOpenAuditModal ? 'cursor-pointer hover:border-emerald-500/50 hover:shadow-emerald-500/10 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-hidden' : ''
+          } ${
+            isLight ? 'bg-white border-slate-200' : 'bg-slate-900/90 border-slate-800'
+          }`}
+        >
           <div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
@@ -220,9 +235,21 @@ export default function DashboardView({
         </div>
 
         {/* Card 4: PoE Budget */}
-        <div className={`p-5 rounded-2xl border shadow-xl flex flex-col justify-between transition-colors ${
-          isLight ? 'bg-white border-slate-200' : 'bg-slate-900/90 border-slate-800'
-        }`}>
+        <div
+          onClick={onOpenPoeModal}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onOpenPoeModal?.();
+            }
+          }}
+          title="Открыть менеджер бюджета PoE"
+          className={`p-5 rounded-2xl border shadow-xl flex flex-col justify-between transition-all cursor-pointer hover:border-amber-500/50 hover:shadow-amber-500/10 focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:outline-hidden ${
+            isLight ? 'bg-white border-slate-200' : 'bg-slate-900/90 border-slate-800'
+          }`}
+        >
           <div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">

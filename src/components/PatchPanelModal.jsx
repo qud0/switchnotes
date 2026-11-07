@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, Layers, MapPin, FileText } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
 
 export function PatchPanelModal({
   isOpen,
@@ -8,6 +9,7 @@ export function PatchPanelModal({
   onSave,
   theme = 'dark'
 }) {
+  const toast = useToast();
   if (!isOpen) return null;
 
   const [name, setName] = useState('');
@@ -46,7 +48,7 @@ export function PatchPanelModal({
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name.trim()) {
-      alert('Укажите название патч-панели');
+      toast.warning('Укажите название патч-панели');
       return;
     }
 

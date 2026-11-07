@@ -101,7 +101,9 @@ export function exportSvgToFile(svgElement, filename = 'schema') {
     URL.revokeObjectURL(url);
   } catch (err) {
     console.error('Ошибка экспорта SVG:', err);
-    alert(`Не удалось экспортировать SVG: ${err.message}`);
+    if (typeof window !== 'undefined' && window.__toast?.error) {
+      window.__toast.error(`Не удалось экспортировать SVG: ${err.message}`);
+    }
   }
 }
 
@@ -456,7 +458,9 @@ export function exportRackSvg(params) {
     URL.revokeObjectURL(url);
   } catch (err) {
     console.error('Ошибка экспорта SVG стойки:', err);
-    alert(`Не удалось экспортировать SVG стойки: ${err.message}`);
+    if (typeof window !== 'undefined' && window.__toast?.error) {
+      window.__toast.error(`Не удалось экспортировать SVG стойки: ${err.message}`);
+    }
   }
 }
 
@@ -630,6 +634,8 @@ export function exportRackCsv({ rackName = 'Rack', unitMap = {}, currentRackDevi
     URL.revokeObjectURL(url);
   } catch (err) {
     console.error('Ошибка экспорта спецификации стойки в CSV:', err);
-    alert(`Не удалось экспортировать CSV: ${err.message}`);
+    if (typeof window !== 'undefined' && window.__toast?.error) {
+      window.__toast.error(`Не удалось экспортировать CSV: ${err.message}`);
+    }
   }
 }
