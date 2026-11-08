@@ -156,8 +156,18 @@ export function ImportConfigModal({ isOpen, onClose, onImport, theme = 'dark' })
               });
             }
 
-            if (trimmed.includes('shutdown')) {
+            // SNR / Cisco shutdown handling
+            if ((trimmed === 'shutdown' || /^shutdown\b/i.test(trimmed)) && !trimmed.includes('no shutdown')) {
               currentPort.enabled = false;
+            } else if (trimmed === 'no shutdown' || /^no\s+shutdown\b/i.test(trimmed)) {
+              currentPort.enabled = true;
+            }
+
+            // SNR PoE power handling
+            if (trimmed.includes('poe enable') || trimmed.includes('power inline auto') || /poe-out=auto/i.test(trimmed)) {
+              currentPort.poe = true;
+            } else if (trimmed.includes('poe disable') || trimmed.includes('power inline never') || /poe-out=off/i.test(trimmed)) {
+              currentPort.poe = false;
             }
           }
         }

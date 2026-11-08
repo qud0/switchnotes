@@ -1608,7 +1608,23 @@ app.post('/api/discovery/scan', requireRole('engineer'), async (req, res) => {
 // 2. One-click add discovered device to switches database
 app.post('/api/discovery/add-switch', requireRole('engineer'), (req, res) => {
   try {
-    const { name, ip, mac, vendor, model, copperPorts = 24, sfpPorts = 2, location = 'Серверная', notes = '' } = req.body;
+    const {
+      name,
+      ip,
+      mac,
+      vendor = 'SNR',
+      model,
+      copperPorts = 24,
+      sfpPorts = 4,
+      poe = false,
+      poeBudget = 0,
+      snmpCommunity = 'public',
+      badge = '',
+      color = '',
+      location = 'Серверная',
+      notes = ''
+    } = req.body;
+
     if (!name || !ip) {
       return res.status(400).json({ error: 'Укажите имя и IP-адрес коммутатора' });
     }
@@ -1618,16 +1634,26 @@ app.post('/api/discovery/add-switch', requireRole('engineer'), (req, res) => {
       return res.status(400).json({ error: `Коммутатор с таким IP или именем уже существует: ${existing.name}` });
     }
 
+    const isSnr = (vendor || '').toLowerCase().includes('snr');
+    const isMikrotik = (vendor || '').toLowerCase().includes('mikrotik');
+
     const created = storage.createSwitch({
       name,
       ip,
       mac: mac || '',
-      vendor: vendor || 'MikroTik',
-      model: model || 'L2/L3 Managed Switch',
+      vendor: vendor || 'SNR',
+      model: model || (isSnr ? 'SNR Enterprise Switch' : 'L2/L3 Managed Switch'),
+      badge: badge || (isSnr ? 'SNR НАГ' : (isMikrotik ? 'MikroTik' : (vendor || ''))),
+      color: color || (isSnr ? '#059669' : (isMikrotik ? '#334155' : '#3b82f6')),
       location: location || 'Стойка 42U',
       notes: notes || 'Добавлено через сетевой автодискавери',
-      copperPorts: parseInt(copperPorts) || 24,
-      sfpPorts: parseInt(sfpPorts) || 2
+      copperPorts: parseInt(copperPorts) || (isSnr ? 24 : 24),
+      sfpPorts: parseInt(sfpPorts) || (isSnr ? 4 : 2),
+      poe: Boolean(poe),
+      poeBudget: Number(poeBudget) || (poe ? 370 : 0),
+      snmpEnabled: true,
+      snmpCommunity: snmpCommunity || 'public',
+      snmpVersion: '2c'
     });
 
     res.json({ success: true, switch: created });

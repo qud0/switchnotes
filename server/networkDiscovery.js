@@ -26,7 +26,11 @@ export function probeSnmpBasic(ip, community = 'public', timeoutMs = 1200) {
         retries: 1
       });
 
-      const oids = ['1.3.6.1.2.1.1.1.0', '1.3.6.1.2.1.1.5.0'];
+      const oids = [
+        '1.3.6.1.2.1.1.1.0', // sysDescr
+        '1.3.6.1.2.1.1.5.0', // sysName
+        '1.3.6.1.2.1.2.1.0'  // ifNumber
+      ];
       session.get(oids, (error, varbinds) => {
         session.close();
         if (error || !varbinds || varbinds.length === 0) {
@@ -35,19 +39,22 @@ export function probeSnmpBasic(ip, community = 'public', timeoutMs = 1200) {
 
         let sysDescr = '';
         let sysName = '';
+        let ifNumber = 0;
 
         varbinds.forEach(vb => {
           if (!snmp.isVarbindError(vb)) {
             const oid = vb.oid;
             if (oid === '1.3.6.1.2.1.1.1.0') sysDescr = vb.value ? vb.value.toString() : '';
             if (oid === '1.3.6.1.2.1.1.5.0') sysName = vb.value ? vb.value.toString() : '';
+            if (oid === '1.3.6.1.2.1.2.1.0') ifNumber = Number(vb.value) || 0;
           }
         });
 
         resolve({
           snmpAvailable: Boolean(sysDescr || sysName),
           sysDescr,
-          sysName
+          sysName,
+          ifNumber
         });
       });
     } catch {
@@ -167,20 +174,81 @@ export async function scanAndDiscoverNetwork({
       }
       suggestedPorts = { copper: 24, sfp: 2 };
     }
-    // 2. Сигнатура SNR (NAG)
-    else if (detectedVendor.toLowerCase().includes('snr') || snmpInfo.sysDescr?.toLowerCase().includes('snr')) {
+    // 2. Сигнатура SNR (NAG: SNR-S2989G, SNR-S2985G и др.)
+    else if (
+      detectedVendor.toLowerCase().includes('snr') ||
+      vendorInfo.vendor?.toLowerCase().includes('snr') ||
+      vendorInfo.vendor?.toLowerCase().includes('nag') ||
+      snmpInfo.sysDescr?.toLowerCase().includes('snr') ||
+      snmpInfo.sysDescr?.toLowerCase().includes('nag')
+    ) {
       detectedVendor = 'SNR';
       deviceCategory = 'switch';
-      confidence = 95;
-      if (snmpInfo.sysDescr?.includes('S2985G')) {
-        detectedModel = 'SNR-S2985G-24T';
-        suggestedPorts = { copper: 24, sfp: 4 };
-      } else if (snmpInfo.sysDescr) {
-        detectedModel = snmpInfo.sysDescr.split(' ')[0] || 'SNR Managed Switch';
+      confidence = snmpInfo.snmpAvailable ? 98 : 90;
+
+      const desc = snmpInfo.sysDescr || '';
+      const ifNum = snmpInfo.ifNumber || 0;
+      const isPoe = /poe/i.test(desc);
+
+      let copper = 24;
+      let sfp = 4;
+      let poeBudget = isPoe ? 370 : 0;
+      let matchedModel = 'SNR Enterprise Switch';
+
+      // Парсинг точного названия модели из sysDescr (например SNR-S2989G-24TX, SNR-S2985G-48T-POE)
+      const modelMatch = desc.match(/SNR-(S29[0-9]{2}[A-Za-z0-9\-_]+)/i);
+      const rawModel = modelMatch ? `SNR-${modelMatch[1].toUpperCase()}` : null;
+
+      if (rawModel) {
+        if (/48/.test(rawModel)) {
+          copper = 48;
+          sfp = 4;
+          poeBudget = isPoe ? 740 : 0;
+        } else if (/8/.test(rawModel) && !/298/.test(rawModel.replace(/298[0-9]/, ''))) {
+          copper = 8;
+          sfp = 2;
+          poeBudget = isPoe ? 150 : 0;
+        } else {
+          copper = 24;
+          sfp = 4;
+          poeBudget = isPoe ? 370 : 0;
+        }
+
+        if (/S2989G/i.test(rawModel)) {
+          matchedModel = isPoe ? `SNR-S2989G-${copper}TX-POE (${poeBudget}W)` : `SNR-S2989G-${copper}TX`;
+        } else if (/S2985G/i.test(rawModel)) {
+          matchedModel = isPoe ? `SNR-S2985G-${copper}T-POE (${poeBudget}W)` : `SNR-S2985G-${copper}T`;
+        } else {
+          matchedModel = rawModel;
+        }
       } else {
-        detectedModel = 'SNR Enterprise Switch';
-        suggestedPorts = { copper: 24, sfp: 4 };
+        // Определение по ifNumber (SNMP IF-MIB)
+        if (ifNum >= 48) {
+          copper = 48;
+          sfp = 4;
+          poeBudget = isPoe ? 740 : 0;
+          matchedModel = isPoe ? `SNR-S2989G-48TX-POE (740W)` : `SNR-S2989G-48TX`;
+        } else if (ifNum > 0 && ifNum <= 16) {
+          copper = 8;
+          sfp = 2;
+          poeBudget = isPoe ? 150 : 0;
+          matchedModel = isPoe ? `SNR-S2989G-8TX-POE (150W)` : `SNR-S2989G-8TX`;
+        } else {
+          copper = 24;
+          sfp = 4;
+          poeBudget = isPoe ? 370 : 0;
+          matchedModel = isPoe ? `SNR-S2989G-24TX-POE (370W)` : `SNR-S2989G-24TX`;
+        }
       }
+
+      detectedModel = matchedModel;
+      suggestedPorts = {
+        copper,
+        sfp,
+        poe: isPoe,
+        poeBudget,
+        sfpSpeed: /2989G/i.test(detectedModel) ? '10G' : '1G'
+      };
     }
     // 3. Сигнатура Ubiquiti (UniFi / EdgeSwitch)
     else if (detectedVendor.toLowerCase().includes('ubiquiti') || openPorts.includes(8443) || openPorts.includes(8080) || snmpInfo.sysDescr?.toLowerCase().includes('edgeswitch') || snmpInfo.sysDescr?.toLowerCase().includes('unifi')) {
@@ -222,6 +290,8 @@ export async function scanAndDiscoverNetwork({
       snmp: snmpInfo,
       confidence,
       suggestedPorts,
+      poe: suggestedPorts?.poe || false,
+      poeBudget: suggestedPorts?.poeBudget || 0,
       alreadyInSwitches: Boolean(existingSwitch),
       existingSwitchId: existingSwitch ? existingSwitch.id : null,
       existingSwitchName: existingSwitch ? existingSwitch.name : null,
@@ -313,6 +383,58 @@ export async function scanAndDiscoverNetwork({
         snmp: { snmpAvailable: true, sysDescr: 'RouterOS CRS112-8G-4S-IN v7.13', sysName: 'sw-office-branch' },
         confidence: 98,
         suggestedPorts: { copper: 8, sfp: 4 },
+        poe: false,
+        poeBudget: 0,
+        alreadyInSwitches: false,
+        existingSwitchId: null,
+        existingSwitchName: null,
+        inIpam: false,
+        ipamEntry: null
+      },
+      {
+        ip: '192.168.10.45',
+        online: true,
+        rtt: 1.8,
+        mac: 'F8:F0:82:33:77:88',
+        vendor: 'SNR',
+        model: 'SNR-S2989G-24TX-POE (370W)',
+        category: 'switch',
+        openPorts: [22, 23, 80],
+        snmp: {
+          snmpAvailable: true,
+          sysDescr: 'SNR-S2989G-24TX-POE Device, Compiled Nov 05 10:33:12 2022, SoftWare Version 7.0.3.5',
+          sysName: 'sw-prod-snr24',
+          ifNumber: 28
+        },
+        confidence: 99,
+        suggestedPorts: { copper: 24, sfp: 4, poe: true, poeBudget: 370, sfpSpeed: '10G' },
+        poe: true,
+        poeBudget: 370,
+        alreadyInSwitches: false,
+        existingSwitchId: null,
+        existingSwitchName: null,
+        inIpam: false,
+        ipamEntry: null
+      },
+      {
+        ip: '192.168.10.48',
+        online: true,
+        rtt: 2.4,
+        mac: 'F8:F0:82:99:AA:BB',
+        vendor: 'SNR',
+        model: 'SNR-S2985G-48T-POE (740W)',
+        category: 'switch',
+        openPorts: [22, 23, 80],
+        snmp: {
+          snmpAvailable: true,
+          sysDescr: 'SNR-S2985G-48T-POE Device, Compiled Dec 14 12:15:00 2021, SoftWare Version 7.0.3.5',
+          sysName: 'sw-cctv-snr48',
+          ifNumber: 52
+        },
+        confidence: 99,
+        suggestedPorts: { copper: 48, sfp: 4, poe: true, poeBudget: 740, sfpSpeed: '1G' },
+        poe: true,
+        poeBudget: 740,
         alreadyInSwitches: false,
         existingSwitchId: null,
         existingSwitchName: null,

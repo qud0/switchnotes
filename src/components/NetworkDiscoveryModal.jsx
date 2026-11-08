@@ -76,27 +76,45 @@ export function NetworkDiscoveryModal({
       clearInterval(progressTimer);
       setScanProgress(100);
 
-      const devices = (result.hosts || []).map((h, i) => {
-        // Smart device classification
-        const isMikrotik = (h.vendor || '').toLowerCase().includes('mikrotik') || (h.openPorts || []).includes(8291);
-        const isCisco = (h.vendor || '').toLowerCase().includes('cisco');
-        const isSnr = (h.vendor || '').toLowerCase().includes('snr') || (h.vendor || '').toLowerCase().includes('nag');
-        const isUnifi = (h.vendor || '').toLowerCase().includes('ubiquiti');
-        const isSwitch = isMikrotik || isCisco || isSnr || isUnifi || (h.sysDescr || '').toLowerCase().includes('switch');
+      const sourceList = (result.devices && result.devices.length > 0)
+        ? result.devices
+        : (result.hosts || []).filter(h => h.online !== false);
 
-        let deviceType = isSwitch ? 'switch' : ((h.openPorts || []).includes(80) || (h.openPorts || []).includes(443) ? 'web-server' : 'host');
+      const devices = sourceList.map((h, i) => {
+        const sysDescr = h.snmp?.sysDescr || h.sysDescr || '';
+        const sysName = h.snmp?.sysName || h.sysName || '';
+        const isSnr = (h.vendor || '').toLowerCase().includes('snr') || (h.vendor || '').toLowerCase().includes('nag') || sysDescr.toLowerCase().includes('snr');
+        const isMikrotik = (h.vendor || '').toLowerCase().includes('mikrotik') || (h.openPorts || []).includes(8291) || sysDescr.toLowerCase().includes('routeros');
+        const isCisco = (h.vendor || '').toLowerCase().includes('cisco');
+        const isUnifi = (h.vendor || '').toLowerCase().includes('ubiquiti');
+        const isSwitch = h.category === 'switch' || isSnr || isMikrotik || isCisco || isUnifi || sysDescr.toLowerCase().includes('switch');
+
+        let deviceType = isSwitch ? 'switch' : (h.category || ((h.openPorts || []).includes(80) || (h.openPorts || []).includes(443) ? 'web-server' : 'host'));
+
+        const copperPorts = h.suggestedPorts?.copper || (isSnr ? 24 : 24);
+        const sfpPorts = h.suggestedPorts?.sfp || (isSnr ? 4 : 2);
+        const poe = Boolean(h.poe !== undefined ? h.poe : (h.suggestedPorts?.poe || /poe/i.test(sysDescr)));
+        const poeBudget = Number(h.poeBudget !== undefined ? h.poeBudget : (h.suggestedPorts?.poeBudget || (poe ? 370 : 0)));
+
+        let defaultName = sysName || (isSnr ? `sw-snr-${h.ip.split('.').slice(-1)[0]}` : (isMikrotik ? `sw-mt-${h.ip.split('.').slice(-1)[0]}` : `host-${h.ip.split('.').slice(-1)[0]}`));
 
         return {
           id: `disc-${i}-${h.ip}`,
           ip: h.ip,
           mac: h.mac || '00:00:00:00:00:00',
-          vendor: h.vendor || 'Unknown Vendor',
-          hostname: h.sysName || h.hostname || `Host-${h.ip.split('.').slice(-1)[0]}`,
-          sysDescr: h.sysDescr || '',
+          vendor: isSnr ? 'SNR' : (h.vendor || 'Unknown Vendor'),
+          model: h.model || (isSnr ? 'SNR Enterprise Switch' : 'L2/L3 Managed Switch'),
+          hostname: defaultName,
+          sysDescr: sysDescr,
           openPorts: h.openPorts || [],
-          pingRtt: h.pingRtt || (Math.floor(Math.random() * 5) + 1),
+          pingRtt: h.rtt || h.pingRtt || 1,
           deviceType,
-          isAlreadyInDb: existingSwitchIps.has(h.ip)
+          copperPorts,
+          sfpPorts,
+          poe,
+          poeBudget,
+          sfpSpeed: h.suggestedPorts?.sfpSpeed || (isSnr && /2989/i.test(h.model || '') ? '10G' : '1G'),
+          isAlreadyInDb: existingSwitchIps.has(h.ip) || Boolean(h.alreadyInSwitches)
         };
       });
 
@@ -114,10 +132,17 @@ export function NetworkDiscoveryModal({
     try {
       await api.addDiscoveredSwitch({
         ip: device.ip,
+        mac: device.mac !== '00:00:00:00:00:00' && device.mac !== '—' ? device.mac : '',
         name: device.hostname,
         vendor: device.vendor,
-        model: device.sysDescr ? device.sysDescr.slice(0, 30) : `${device.vendor} Switch`,
-        portsCount: 24,
+        model: device.model,
+        copperPorts: device.copperPorts || 24,
+        sfpPorts: device.sfpPorts || 4,
+        poe: device.poe,
+        poeBudget: device.poeBudget,
+        snmpCommunity: snmpCommunity || 'public',
+        badge: device.vendor === 'SNR' ? 'SNR НАГ' : (device.vendor === 'MikroTik' ? 'MikroTik' : device.vendor),
+        color: device.vendor === 'SNR' ? '#059669' : (device.vendor === 'MikroTik' ? '#334155' : '#3b82f6'),
         location: 'Автодискавери'
       });
 
@@ -138,10 +163,17 @@ export function NetworkDiscoveryModal({
       try {
         await api.addDiscoveredSwitch({
           ip: d.ip,
+          mac: d.mac !== '00:00:00:00:00:00' && d.mac !== '—' ? d.mac : '',
           name: d.hostname,
           vendor: d.vendor,
-          model: d.sysDescr ? d.sysDescr.slice(0, 30) : `${d.vendor} Switch`,
-          portsCount: 24,
+          model: d.model,
+          copperPorts: d.copperPorts || 24,
+          sfpPorts: d.sfpPorts || 4,
+          poe: d.poe,
+          poeBudget: d.poeBudget,
+          snmpCommunity: snmpCommunity || 'public',
+          badge: d.vendor === 'SNR' ? 'SNR НАГ' : (d.vendor === 'MikroTik' ? 'MikroTik' : d.vendor),
+          color: d.vendor === 'SNR' ? '#059669' : (d.vendor === 'MikroTik' ? '#334155' : '#3b82f6'),
           location: 'Автодискавери'
         });
         setAddedSwitchIds(prev => new Set([...prev, d.id]));
@@ -411,6 +443,7 @@ export function NetworkDiscoveryModal({
                   {filteredDevices.map(dev => {
                     const isAdded = addedSwitchIds.has(dev.id);
                     const isInDb = dev.isAlreadyInDb || isAdded;
+                    const isSnr = dev.vendor === 'SNR';
 
                     return (
                       <tr key={dev.id} className="hover:bg-slate-900/60 transition-colors">
@@ -419,8 +452,12 @@ export function NetworkDiscoveryModal({
                           <div className="flex items-center gap-2">
                             <span>{dev.ip}</span>
                             {dev.deviceType === 'switch' && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-sans">
-                                L2/L3
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-sans font-semibold ${
+                                isSnr 
+                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' 
+                                  : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                              }`}>
+                                {isSnr ? 'SNR L2/L3' : 'L2/L3'}
                               </span>
                             )}
                           </div>
@@ -428,16 +465,41 @@ export function NetworkDiscoveryModal({
 
                         {/* Vendor & MAC */}
                         <td className="py-2.5 px-3">
-                          <span className="font-sans font-bold text-slate-200 block">{dev.vendor}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-sans font-bold text-slate-200 block">{dev.vendor}</span>
+                            {isSnr && (
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-sans">
+                                НАГ
+                              </span>
+                            )}
+                          </div>
                           <span className="text-[10px] text-slate-500">{dev.mac}</span>
                         </td>
 
-                        {/* Hostname & SysDescr */}
+                        {/* Hostname, Model & Specs */}
                         <td className="py-2.5 px-3 font-sans">
-                          <span className="font-bold text-white block">{dev.hostname}</span>
-                          {dev.sysDescr && (
-                            <span className="text-[10px] text-slate-500 line-clamp-1">{dev.sysDescr}</span>
-                          )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-white">{dev.hostname}</span>
+                            {dev.model && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-mono">
+                                {dev.model}
+                              </span>
+                            )}
+                            {dev.poe && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-0.5 font-semibold">
+                                <Zap className="w-2.5 h-2.5" />
+                                {dev.poeBudget > 0 ? `PoE ${dev.poeBudget}W` : 'PoE'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                            {dev.copperPorts && (
+                              <span>{dev.copperPorts}x RJ-45 + {dev.sfpPorts}x {dev.sfpSpeed || 'SFP'}</span>
+                            )}
+                            {dev.sysDescr && !dev.sysDescr.includes(dev.model) && (
+                              <span className="text-slate-500 line-clamp-1 italic max-w-xs">{dev.sysDescr}</span>
+                            )}
+                          </div>
                         </td>
 
                         {/* Open Ports & RTT */}
@@ -465,10 +527,14 @@ export function NetworkDiscoveryModal({
                             <button
                               type="button"
                               onClick={() => handleAddSwitch(dev)}
-                              className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-[11px] flex items-center gap-1 ml-auto cursor-pointer shadow-xs"
+                              className={`px-2.5 py-1 rounded-lg text-white font-semibold text-[11px] flex items-center gap-1 ml-auto cursor-pointer shadow-xs transition-colors ${
+                                isSnr 
+                                  ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20' 
+                                  : 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/20'
+                              }`}
                             >
                               <Plus className="w-3 h-3" />
-                              <span>Добавить</span>
+                              <span>{isSnr ? 'Внести SNR' : 'Добавить'}</span>
                             </button>
                           )}
                         </td>
