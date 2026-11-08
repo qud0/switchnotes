@@ -2,6 +2,28 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Download, Search, Zap, Link as LinkIcon, AlertTriangle, ArrowUpRight, Filter, ChevronUp, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { VlanBadge } from './VlanBadge';
 import { checkVlanMismatch } from '../utils/vlanMismatch';
+import { TableColumnSelector } from './TableColumnSelector';
+
+const PORT_TABLE_COLUMNS = [
+  { key: 'number', label: '#', required: true },
+  { key: 'name', label: 'Интерфейс', required: true },
+  { key: 'mode', label: 'Режим' },
+  { key: 'pvid', label: 'PVID (Native)' },
+  { key: 'tagged', label: 'Tagged VLANs' },
+  { key: 'description', label: 'Описание' },
+  { key: 'connectedTo', label: 'Куда подключен' },
+  { key: 'poe', label: 'PoE' },
+  { key: 'actions', label: 'Действие' }
+];
+
+const DEFAULT_PORT_COLUMNS = PORT_TABLE_COLUMNS.map(c => c.key);
+
+const PORT_TABLE_PRESETS = [
+  { id: 'all', label: 'Все колонки', columns: DEFAULT_PORT_COLUMNS },
+  { id: 'network', label: 'Сетевик / VLAN', columns: ['number', 'name', 'mode', 'pvid', 'tagged', 'description', 'actions'] },
+  { id: 'cabling', label: 'Монтажник СКС', columns: ['number', 'name', 'description', 'connectedTo', 'poe', 'actions'] },
+  { id: 'compact', label: 'Компактный', columns: ['number', 'name', 'pvid', 'connectedTo', 'actions'] }
+];
 
 export function PortTable({
   switchData,
@@ -53,6 +75,60 @@ export function PortTable({
       console.warn('Failed to save sort state to localStorage', e);
     }
   }, [sortField, sortOrder]);
+
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('switchbook_port_table_columns');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to read visible columns from localStorage', e);
+    }
+    return DEFAULT_PORT_COLUMNS;
+  });
+
+  const [activePreset, setActivePreset] = useState(() => {
+    try {
+      return localStorage.getItem('switchbook_port_table_preset') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('switchbook_port_table_columns', JSON.stringify(visibleColumns));
+      localStorage.setItem('switchbook_port_table_preset', activePreset);
+    } catch (e) {
+      console.warn('Failed to save columns state to localStorage', e);
+    }
+  }, [visibleColumns, activePreset]);
+
+  const handleToggleColumn = (colKey) => {
+    setVisibleColumns(prev => {
+      const next = prev.includes(colKey)
+        ? prev.filter(k => k !== colKey)
+        : [...prev, colKey];
+
+      const matched = PORT_TABLE_PRESETS.find(p =>
+        p.columns.length === next.length && p.columns.every(c => next.includes(c))
+      );
+      setActivePreset(matched ? matched.id : 'custom');
+      return next;
+    });
+  };
+
+  const handleSelectPreset = (presetId, cols) => {
+    setActivePreset(presetId);
+    setVisibleColumns(cols);
+  };
+
+  const handleResetColumns = () => {
+    setActivePreset('all');
+    setVisibleColumns(DEFAULT_PORT_COLUMNS);
+  };
 
   const vlanMap = useMemo(() => {
     const map = {};
@@ -180,13 +256,26 @@ export function PortTable({
           </p>
         </div>
 
-        <button
-          onClick={handleExportCSV}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-medium shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
-        >
-          <Download className="w-3.5 h-3.5" />
-          Экспорт в Excel (CSV)
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <TableColumnSelector
+            columns={PORT_TABLE_COLUMNS}
+            visibleColumns={visibleColumns}
+            onToggleColumn={handleToggleColumn}
+            presets={PORT_TABLE_PRESETS}
+            activePreset={activePreset}
+            onSelectPreset={handleSelectPreset}
+            onReset={handleResetColumns}
+            theme={theme}
+          />
+
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-medium shadow-xs transition-colors cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Экспорт в Excel (CSV)
+          </button>
+        </div>
       </div>
 
       {/* Filter Toolbar */}
@@ -240,50 +329,68 @@ export function PortTable({
             isLight ? 'bg-slate-50/95 border-slate-200 text-slate-700 backdrop-blur-md' : 'bg-slate-950/95 border-slate-800 text-slate-300 backdrop-blur-md'
           }`}>
             <tr>
-              <th onClick={() => handleSort('number')} className="py-2.5 px-3 cursor-pointer hover:text-blue-500 transition-colors select-none">
-                <div className="flex items-center gap-1">
-                  <span>#</span>
-                  {sortField === 'number' ? (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />) : <ArrowUpDown className="w-2.5 h-2.5 opacity-30" />}
-                </div>
-              </th>
-              <th onClick={() => handleSort('name')} className="py-2.5 px-3 cursor-pointer hover:text-blue-500 transition-colors select-none">
-                <div className="flex items-center gap-1">
-                  <span>Интерфейс</span>
-                  {sortField === 'name' ? (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />) : <ArrowUpDown className="w-2.5 h-2.5 opacity-30" />}
-                </div>
-              </th>
-              <th onClick={() => handleSort('mode')} className="py-2.5 px-3 cursor-pointer hover:text-blue-500 transition-colors select-none">
-                <div className="flex items-center gap-1">
-                  <span>Режим</span>
-                  {sortField === 'mode' ? (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />) : <ArrowUpDown className="w-2.5 h-2.5 opacity-30" />}
-                </div>
-              </th>
-              <th onClick={() => handleSort('pvid')} className="py-2.5 px-3 cursor-pointer hover:text-blue-500 transition-colors select-none">
-                <div className="flex items-center gap-1">
-                  <span>PVID (Native)</span>
-                  {sortField === 'pvid' ? (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />) : <ArrowUpDown className="w-2.5 h-2.5 opacity-30" />}
-                </div>
-              </th>
-              <th className="py-2.5 px-3">Tagged VLANs</th>
-              <th onClick={() => handleSort('description')} className="py-2.5 px-3 cursor-pointer hover:text-blue-500 transition-colors select-none">
-                <div className="flex items-center gap-1">
-                  <span>Описание (Description)</span>
-                  {sortField === 'description' ? (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />) : <ArrowUpDown className="w-2.5 h-2.5 opacity-30" />}
-                </div>
-              </th>
-              <th onClick={() => handleSort('connectedTo')} className="py-2.5 px-3 cursor-pointer hover:text-blue-500 transition-colors select-none">
-                <div className="flex items-center gap-1">
-                  <span>Куда подключен (Connected To)</span>
-                  {sortField === 'connectedTo' ? (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />) : <ArrowUpDown className="w-2.5 h-2.5 opacity-30" />}
-                </div>
-              </th>
-              <th onClick={() => handleSort('poe')} className="py-2.5 px-3 text-center cursor-pointer hover:text-blue-500 transition-colors select-none">
-                <div className="flex items-center justify-center gap-1">
-                  <span>PoE</span>
-                  {sortField === 'poe' ? (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />) : <ArrowUpDown className="w-2.5 h-2.5 opacity-30" />}
-                </div>
-              </th>
-              <th className="py-2.5 px-3 text-right">Действие</th>
+              {visibleColumns.includes('number') && (
+                <th onClick={() => handleSort('number')} className="py-2.5 px-3 cursor-pointer hover:text-blue-500 transition-colors select-none">
+                  <div className="flex items-center gap-1">
+                    <span>#</span>
+                    {sortField === 'number' ? (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />) : <ArrowUpDown className="w-2.5 h-2.5 opacity-30" />}
+                  </div>
+                </th>
+              )}
+              {visibleColumns.includes('name') && (
+                <th onClick={() => handleSort('name')} className="py-2.5 px-3 cursor-pointer hover:text-blue-500 transition-colors select-none">
+                  <div className="flex items-center gap-1">
+                    <span>Интерфейс</span>
+                    {sortField === 'name' ? (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />) : <ArrowUpDown className="w-2.5 h-2.5 opacity-30" />}
+                  </div>
+                </th>
+              )}
+              {visibleColumns.includes('mode') && (
+                <th onClick={() => handleSort('mode')} className="py-2.5 px-3 cursor-pointer hover:text-blue-500 transition-colors select-none">
+                  <div className="flex items-center gap-1">
+                    <span>Режим</span>
+                    {sortField === 'mode' ? (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />) : <ArrowUpDown className="w-2.5 h-2.5 opacity-30" />}
+                  </div>
+                </th>
+              )}
+              {visibleColumns.includes('pvid') && (
+                <th onClick={() => handleSort('pvid')} className="py-2.5 px-3 cursor-pointer hover:text-blue-500 transition-colors select-none">
+                  <div className="flex items-center gap-1">
+                    <span>PVID (Native)</span>
+                    {sortField === 'pvid' ? (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />) : <ArrowUpDown className="w-2.5 h-2.5 opacity-30" />}
+                  </div>
+                </th>
+              )}
+              {visibleColumns.includes('tagged') && (
+                <th className="py-2.5 px-3">Tagged VLANs</th>
+              )}
+              {visibleColumns.includes('description') && (
+                <th onClick={() => handleSort('description')} className="py-2.5 px-3 cursor-pointer hover:text-blue-500 transition-colors select-none">
+                  <div className="flex items-center gap-1">
+                    <span>Описание (Description)</span>
+                    {sortField === 'description' ? (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />) : <ArrowUpDown className="w-2.5 h-2.5 opacity-30" />}
+                  </div>
+                </th>
+              )}
+              {visibleColumns.includes('connectedTo') && (
+                <th onClick={() => handleSort('connectedTo')} className="py-2.5 px-3 cursor-pointer hover:text-blue-500 transition-colors select-none">
+                  <div className="flex items-center gap-1">
+                    <span>Куда подключен (Connected To)</span>
+                    {sortField === 'connectedTo' ? (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />) : <ArrowUpDown className="w-2.5 h-2.5 opacity-30" />}
+                  </div>
+                </th>
+              )}
+              {visibleColumns.includes('poe') && (
+                <th onClick={() => handleSort('poe')} className="py-2.5 px-3 text-center cursor-pointer hover:text-blue-500 transition-colors select-none">
+                  <div className="flex items-center justify-center gap-1">
+                    <span>PoE</span>
+                    {sortField === 'poe' ? (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />) : <ArrowUpDown className="w-2.5 h-2.5 opacity-30" />}
+                  </div>
+                </th>
+              )}
+              {visibleColumns.includes('actions') && (
+                <th className="py-2.5 px-3 text-right">Действие</th>
+              )}
             </tr>
           </thead>
           <tbody className={`divide-y font-sans ${
@@ -291,7 +398,7 @@ export function PortTable({
           }`}>
             {sortedPorts.length === 0 ? (
               <tr>
-                <td colSpan="9" className="py-8 text-center text-slate-400">
+                <td colSpan={visibleColumns.length} className="py-8 text-center text-slate-400">
                   По заданному фильтру порты не найдены
                 </td>
               </tr>
@@ -310,101 +417,119 @@ export function PortTable({
                       hasMismatch ? 'bg-red-500/5' : ''
                     }`}
                   >
-                    <td className="py-2.5 px-3 font-mono font-bold text-slate-400">
-                      {port.number}
-                    </td>
+                    {visibleColumns.includes('number') && (
+                      <td className="py-2.5 px-3 font-mono font-bold text-slate-400">
+                        {port.number}
+                      </td>
+                    )}
 
-                    <td className="py-2.5 px-3 font-mono font-medium text-slate-900 dark:text-white flex items-center gap-1.5">
-                      <span>{port.name || `port ${port.number}`}</span>
-                      {hasMismatch && (
-                        <AlertTriangle className="w-3.5 h-3.5 text-red-500" title="Расхождение VLAN" />
-                      )}
-                      {port.linkedSwitchId && !hasMismatch && (
-                        <LinkIcon className="w-3 h-3 text-cyan-500" title="Связанный порт" />
-                      )}
-                    </td>
+                    {visibleColumns.includes('name') && (
+                      <td className="py-2.5 px-3 font-mono font-medium text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <span>{port.name || `port ${port.number}`}</span>
+                        {hasMismatch && (
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-500" title="Расхождение VLAN" />
+                        )}
+                        {port.linkedSwitchId && !hasMismatch && (
+                          <LinkIcon className="w-3 h-3 text-cyan-500" title="Связанный порт" />
+                        )}
+                      </td>
+                    )}
 
-                    <td className="py-2.5 px-3">
-                      <span className={`px-2 py-0.5 rounded-sm text-[10px] font-mono font-bold uppercase ${
-                        !port.enabled || port.mode === 'disabled'
-                          ? 'bg-slate-200 dark:bg-slate-800 text-slate-500'
-                          : port.mode === 'trunk'
-                            ? 'bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400 border border-purple-300 dark:border-purple-800'
-                            : 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-800'
-                      }`}>
-                        {port.mode}
-                      </span>
-                    </td>
+                    {visibleColumns.includes('mode') && (
+                      <td className="py-2.5 px-3">
+                        <span className={`px-2 py-0.5 rounded-sm text-[10px] font-mono font-bold uppercase ${
+                          !port.enabled || port.mode === 'disabled'
+                            ? 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                            : port.mode === 'trunk'
+                              ? 'bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400 border border-purple-300 dark:border-purple-800'
+                              : 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-800'
+                        }`}>
+                          {port.mode}
+                        </span>
+                      </td>
+                    )}
 
-                    <td className="py-2.5 px-3">
-                      <VlanBadge vlan={nativeVlan} size="xs" />
-                    </td>
+                    {visibleColumns.includes('pvid') && (
+                      <td className="py-2.5 px-3">
+                        <VlanBadge vlan={nativeVlan} size="xs" />
+                      </td>
+                    )}
 
-                    <td className="py-2.5 px-3">
-                      {port.mode === 'trunk' && port.taggedVlans && port.taggedVlans.length > 0 ? (
-                        <div className="flex flex-wrap gap-1 max-w-xs">
-                          {port.taggedVlans.map(vId => {
-                            const vl = vlanMap[vId] || { id: vId, color: '#64748b' };
-                            return (
-                              <span
-                                key={vId}
-                                className="font-mono text-[10px] px-1 py-0.2 rounded-xs border"
-                                style={{
-                                  backgroundColor: `${vl.color}25`,
-                                  borderColor: `${vl.color}55`,
-                                  color: vl.color
-                                }}
+                    {visibleColumns.includes('tagged') && (
+                      <td className="py-2.5 px-3">
+                        {port.mode === 'trunk' && port.taggedVlans && port.taggedVlans.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 max-w-xs">
+                            {port.taggedVlans.map(vId => {
+                              const vl = vlanMap[vId] || { id: vId, color: '#64748b' };
+                              return (
+                                <span
+                                  key={vId}
+                                  className="font-mono text-[10px] px-1 py-0.2 rounded-xs border"
+                                  style={{
+                                    backgroundColor: `${vl.color}25`,
+                                    borderColor: `${vl.color}55`,
+                                    color: vl.color
+                                  }}
+                                >
+                                  {vId}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-xs">—</span>
+                        )}
+                      </td>
+                    )}
+
+                    {visibleColumns.includes('description') && (
+                      <td className="py-2.5 px-3 text-slate-800 dark:text-slate-200 font-medium">
+                        {port.description || <span className="text-slate-400 text-xs">—</span>}
+                      </td>
+                    )}
+
+                    {visibleColumns.includes('connectedTo') && (
+                      <td className="py-2.5 px-3">
+                        {port.connectedTo ? (
+                          <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                            <span className="font-mono text-xs">{port.connectedTo}</span>
+                            {port.linkedSwitchId && (
+                              <button
+                                type="button"
+                                onClick={() => onJumpToPeer(port.linkedSwitchId, port.linkedPortId)}
+                                className="text-blue-600 hover:text-blue-500 cursor-pointer"
+                                title="Перейти к коммутатору"
                               >
-                                {vId}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 text-xs">—</span>
-                      )}
-                    </td>
+                                <ArrowUpRight className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-xs">—</span>
+                        )}
+                      </td>
+                    )}
 
-                    <td className="py-2.5 px-3 text-slate-800 dark:text-slate-200 font-medium">
-                      {port.description || <span className="text-slate-400 text-xs">—</span>}
-                    </td>
+                    {visibleColumns.includes('poe') && (
+                      <td className="py-2.5 px-3 text-center">
+                        {port.poe ? (
+                          <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500 mx-auto" />
+                        ) : (
+                          <span className="text-slate-400 text-xs">—</span>
+                        )}
+                      </td>
+                    )}
 
-                    <td className="py-2.5 px-3">
-                      {port.connectedTo ? (
-                        <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
-                          <span className="font-mono text-xs">{port.connectedTo}</span>
-                          {port.linkedSwitchId && (
-                            <button
-                              type="button"
-                              onClick={() => onJumpToPeer(port.linkedSwitchId, port.linkedPortId)}
-                              className="text-blue-600 hover:text-blue-500 cursor-pointer"
-                              title="Перейти к коммутатору"
-                            >
-                              <ArrowUpRight className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 text-xs">—</span>
-                      )}
-                    </td>
-
-                    <td className="py-2.5 px-3 text-center">
-                      {port.poe ? (
-                        <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500 mx-auto" />
-                      ) : (
-                        <span className="text-slate-400 text-xs">—</span>
-                      )}
-                    </td>
-
-                    <td className="py-2.5 px-3 text-right">
-                      <button
-                        onClick={() => onOpenPortDrawer([port])}
-                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer"
-                      >
-                        Настроить
-                      </button>
-                    </td>
+                    {visibleColumns.includes('actions') && (
+                      <td className="py-2.5 px-3 text-right">
+                        <button
+                          onClick={() => onOpenPortDrawer([port])}
+                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer"
+                        >
+                          Настроить
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })

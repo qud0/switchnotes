@@ -34,6 +34,29 @@ import { SvgQrCode } from './SvgQrCode';
 import { PinoutGuideModal } from './PinoutGuideModal';
 import { BatchRenumberModal } from './BatchRenumberModal';
 import { useToast } from '../context/ToastContext';
+import { TableColumnSelector } from './TableColumnSelector';
+
+const CJ_TABLE_COLUMNS = [
+  { key: 'mark', label: 'Маркировка', required: true },
+  { key: 'room', label: 'Помещение / Рабочее место' },
+  { key: 'socket', label: 'Розетка' },
+  { key: 'panel', label: 'Патч-панель' },
+  { key: 'cable', label: 'Трасса СКС' },
+  { key: 'patchcord', label: 'Патч-корд' },
+  { key: 'switch', label: 'Коммутатор & Порт' },
+  { key: 'vlan', label: 'VLAN' },
+  { key: 'status', label: 'Статус' },
+  { key: 'actions', label: 'Действия' }
+];
+
+const DEFAULT_CJ_COLUMNS = CJ_TABLE_COLUMNS.map(c => c.key);
+
+const CJ_TABLE_PRESETS = [
+  { id: 'all', label: 'Все колонки', columns: DEFAULT_CJ_COLUMNS },
+  { id: 'cabling', label: 'Монтажник СКС', columns: ['mark', 'room', 'socket', 'panel', 'cable', 'patchcord', 'status', 'actions'] },
+  { id: 'network', label: 'Сетевик / VLAN', columns: ['mark', 'room', 'socket', 'switch', 'vlan', 'status', 'actions'] },
+  { id: 'summary', label: 'Компактный', columns: ['mark', 'room', 'socket', 'panel', 'switch', 'status', 'actions'] }
+];
 
 const CABLE_CATEGORIES = [
   'Cat.5e UTP (1 Gbps)',
@@ -136,6 +159,61 @@ export function CableJournalView({
       console.warn('Failed to save categoryFilter', e);
     }
   }, [categoryFilter]);
+
+  // Column Selector state
+  const [cjVisibleColumns, setCjVisibleColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('switchbook_cj_table_columns');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to read cj visible columns from localStorage', e);
+    }
+    return DEFAULT_CJ_COLUMNS;
+  });
+
+  const [cjActivePreset, setCjActivePreset] = useState(() => {
+    try {
+      return localStorage.getItem('switchbook_cj_table_preset') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('switchbook_cj_table_columns', JSON.stringify(cjVisibleColumns));
+      localStorage.setItem('switchbook_cj_table_preset', cjActivePreset);
+    } catch (e) {
+      console.warn('Failed to save cj columns state to localStorage', e);
+    }
+  }, [cjVisibleColumns, cjActivePreset]);
+
+  const handleToggleCjColumn = (colKey) => {
+    setCjVisibleColumns(prev => {
+      const next = prev.includes(colKey)
+        ? prev.filter(k => k !== colKey)
+        : [...prev, colKey];
+
+      const matched = CJ_TABLE_PRESETS.find(p =>
+        p.columns.length === next.length && p.columns.every(c => next.includes(c))
+      );
+      setCjActivePreset(matched ? matched.id : 'custom');
+      return next;
+    });
+  };
+
+  const handleSelectCjPreset = (presetId, cols) => {
+    setCjActivePreset(presetId);
+    setCjVisibleColumns(cols);
+  };
+
+  const handleResetCjColumns = () => {
+    setCjActivePreset('all');
+    setCjVisibleColumns(DEFAULT_CJ_COLUMNS);
+  };
 
   // Label Maker configuration state
   const [labelType, setLabelType] = useState('flags'); // 'flags' | 'wrap' | 'sockets' | 'strip'
@@ -615,6 +693,18 @@ export function CableJournalView({
                 <span>Пакетная маркировка</span>
               </button>
 
+              <TableColumnSelector
+                columns={CJ_TABLE_COLUMNS}
+                visibleColumns={cjVisibleColumns}
+                onToggleColumn={handleToggleCjColumn}
+                presets={CJ_TABLE_PRESETS}
+                activePreset={cjActivePreset}
+                onSelectPreset={handleSelectCjPreset}
+                onReset={handleResetCjColumns}
+                theme={theme}
+                buttonClassName="h-9 px-3 rounded-xl font-semibold"
+              />
+
               <button
                 onClick={handleExportCSV}
                 className={`h-9 px-3.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
@@ -692,22 +782,22 @@ export function CableJournalView({
                 <tr className={`border-b text-[11px] font-semibold uppercase tracking-wider ${
                   isLight ? 'bg-slate-50/95 text-slate-700 border-slate-200 backdrop-blur-md' : 'bg-slate-950/95 text-slate-300 border-slate-800 backdrop-blur-md'
                 }`}>
-                  <th className="py-3 px-3.5">Маркировка</th>
-                  <th className="py-3 px-3.5">Помещение / Рабочее место</th>
-                  <th className="py-3 px-3.5">Розетка</th>
-                  <th className="py-3 px-3.5">Патч-панель</th>
-                  <th className="py-3 px-3.5">Трасса СКС</th>
-                  <th className="py-3 px-3.5">Патч-корд</th>
-                  <th className="py-3 px-3.5">Коммутатор & Порт</th>
-                  <th className="py-3 px-3.5">VLAN</th>
-                  <th className="py-3 px-3.5">Статус</th>
-                  <th className="py-3 px-3.5 text-right">Действия</th>
+                  {cjVisibleColumns.includes('mark') && <th className="py-3 px-3.5">Маркировка</th>}
+                  {cjVisibleColumns.includes('room') && <th className="py-3 px-3.5">Помещение / Рабочее место</th>}
+                  {cjVisibleColumns.includes('socket') && <th className="py-3 px-3.5">Розетка</th>}
+                  {cjVisibleColumns.includes('panel') && <th className="py-3 px-3.5">Патч-панель</th>}
+                  {cjVisibleColumns.includes('cable') && <th className="py-3 px-3.5">Трасса СКС</th>}
+                  {cjVisibleColumns.includes('patchcord') && <th className="py-3 px-3.5">Патч-корд</th>}
+                  {cjVisibleColumns.includes('switch') && <th className="py-3 px-3.5">Коммутатор & Порт</th>}
+                  {cjVisibleColumns.includes('vlan') && <th className="py-3 px-3.5">VLAN</th>}
+                  {cjVisibleColumns.includes('status') && <th className="py-3 px-3.5">Статус</th>}
+                  {cjVisibleColumns.includes('actions') && <th className="py-3 px-3.5 text-right">Действия</th>}
                 </tr>
               </thead>
               <tbody className={`divide-y ${isLight ? 'divide-slate-200' : 'divide-slate-800/40'}`}>
                 {filteredLines.length === 0 ? (
                   <tr>
-                    <td colSpan="10" className="py-12 text-center text-slate-500">
+                    <td colSpan={cjVisibleColumns.length} className="py-12 text-center text-slate-500">
                       Линии не найдены. Измените параметры фильтра или добавьте порты в патч-панели.
                     </td>
                   </tr>
@@ -723,142 +813,162 @@ export function CableJournalView({
                         }`}
                       >
                         {/* Cable Mark */}
-                        <td className="py-3 px-3.5 font-mono font-bold text-slate-900 dark:text-white">
-                          <div className="flex items-center gap-1.5">
-                            <Tag className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                            <span>{line.cableMark}</span>
-                          </div>
-                          {line.description && (
-                            <div className="text-[10px] text-slate-400 font-sans font-normal truncate max-w-[180px]">
-                              {line.description}
+                        {cjVisibleColumns.includes('mark') && (
+                          <td className="py-3 px-3.5 font-mono font-bold text-slate-900 dark:text-white">
+                            <div className="flex items-center gap-1.5">
+                              <Tag className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                              <span>{line.cableMark}</span>
                             </div>
-                          )}
-                        </td>
+                            {line.description && (
+                              <div className="text-[10px] text-slate-400 font-sans font-normal truncate max-w-[180px]">
+                                {line.description}
+                              </div>
+                            )}
+                          </td>
+                        )}
 
                         {/* Room */}
-                        <td className="py-3 px-3.5 font-medium text-slate-800 dark:text-slate-200">
-                          {line.room}
-                        </td>
+                        {cjVisibleColumns.includes('room') && (
+                          <td className="py-3 px-3.5 font-medium text-slate-800 dark:text-slate-200">
+                            {line.room}
+                          </td>
+                        )}
 
                         {/* Socket */}
-                        <td className="py-3 px-3.5">
-                          <span className="font-mono font-bold px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 text-[11px]">
-                            {line.socket}
-                          </span>
-                        </td>
+                        {cjVisibleColumns.includes('socket') && (
+                          <td className="py-3 px-3.5">
+                            <span className="font-mono font-bold px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 text-[11px]">
+                              {line.socket}
+                            </span>
+                          </td>
+                        )}
 
                         {/* Patch Panel & Port */}
-                        <td className="py-3 px-3.5 font-mono">
-                          <div className="text-slate-800 dark:text-slate-200 font-semibold truncate max-w-[150px]">
-                            {line.panelName}
-                          </div>
-                          <div className="text-[10px] text-slate-400">
-                            Порт #{line.portNumber}
-                          </div>
-                        </td>
+                        {cjVisibleColumns.includes('panel') && (
+                          <td className="py-3 px-3.5 font-mono">
+                            <div className="text-slate-800 dark:text-slate-200 font-semibold truncate max-w-[150px]">
+                              {line.panelName}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              Порт #{line.portNumber}
+                            </div>
+                          </td>
+                        )}
 
                         {/* Cable Specs & Length */}
-                        <td className="py-3 px-3.5">
-                          <div className="font-mono font-bold text-slate-700 dark:text-slate-300 text-[11px]">
-                            {line.cableLength}
-                          </div>
-                          <div className="text-[10px] text-slate-400 truncate max-w-[140px]" title={line.cableCategory}>
-                            {line.cableCategory}
-                          </div>
-                        </td>
+                        {cjVisibleColumns.includes('cable') && (
+                          <td className="py-3 px-3.5">
+                            <div className="font-mono font-bold text-slate-700 dark:text-slate-300 text-[11px]">
+                              {line.cableLength}
+                            </div>
+                            <div className="text-[10px] text-slate-400 truncate max-w-[140px]" title={line.cableCategory}>
+                              {line.cableCategory}
+                            </div>
+                          </td>
+                        )}
 
                         {/* Patch Cord */}
-                        <td className="py-3 px-3.5">
-                          <div className="flex items-center gap-1.5 font-mono text-[11px]">
-                            <span
-                              className="w-3 h-3 rounded-full shrink-0 shadow-xs"
-                              style={{ backgroundColor: line.patchCordColor }}
-                            />
-                            <span className="font-semibold text-slate-700 dark:text-slate-300">
-                              {line.patchCordLength}
-                            </span>
-                          </div>
-                        </td>
+                        {cjVisibleColumns.includes('patchcord') && (
+                          <td className="py-3 px-3.5">
+                            <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                              <span
+                                className="w-3 h-3 rounded-full shrink-0 shadow-xs"
+                                style={{ backgroundColor: line.patchCordColor }}
+                              />
+                              <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                {line.patchCordLength}
+                              </span>
+                            </div>
+                          </td>
+                        )}
 
                         {/* Switch & Port */}
-                        <td className="py-3 px-3.5">
-                          {line.switchName ? (
-                            <div>
-                              <button
-                                onClick={() => onSelectSwitch && onSelectSwitch(line.switchId)}
-                                className="font-mono font-bold text-blue-500 hover:underline flex items-center gap-1 text-left cursor-pointer"
-                              >
-                                <span>{line.switchName}</span>
-                              </button>
-                              <div className="font-mono text-[11px] text-slate-400 flex items-center gap-1">
-                                <span>{line.switchPortName}</span>
-                                {line.poe && (
-                                  <span className="text-[9px] px-1 py-0.2 rounded-xs bg-amber-500/15 text-amber-500 font-bold">
-                                    PoE
-                                  </span>
-                                )}
+                        {cjVisibleColumns.includes('switch') && (
+                          <td className="py-3 px-3.5">
+                            {line.switchName ? (
+                              <div>
+                                <button
+                                  onClick={() => onSelectSwitch && onSelectSwitch(line.switchId)}
+                                  className="font-mono font-bold text-blue-500 hover:underline flex items-center gap-1 text-left cursor-pointer"
+                                >
+                                  <span>{line.switchName}</span>
+                                </button>
+                                <div className="font-mono text-[11px] text-slate-400 flex items-center gap-1">
+                                  <span>{line.switchPortName}</span>
+                                  {line.poe && (
+                                    <span className="text-[9px] px-1 py-0.2 rounded-xs bg-amber-500/15 text-amber-500 font-bold">
+                                      PoE
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ) : (
-                            <span className="text-slate-500 italic">Не скоммутирован</span>
-                          )}
-                        </td>
+                            ) : (
+                              <span className="text-slate-500 italic">Не скоммутирован</span>
+                            )}
+                          </td>
+                        )}
 
                         {/* VLAN */}
-                        <td className="py-3 px-3.5">
-                          {line.vlanId ? (
-                            <span
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold"
-                              style={{
-                                backgroundColor: `${line.vlanColor}18`,
-                                color: line.vlanColor,
-                                border: `1px solid ${line.vlanColor}40`
-                              }}
-                            >
-                              <span>VLAN {line.vlanId}</span>
-                              {line.vlanName && <span className="font-sans opacity-85">({line.vlanName})</span>}
-                            </span>
-                          ) : (
-                            <span className="text-slate-500 text-[11px]">Default</span>
-                          )}
-                        </td>
+                        {cjVisibleColumns.includes('vlan') && (
+                          <td className="py-3 px-3.5">
+                            {line.vlanId ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold"
+                                style={{
+                                  backgroundColor: `${line.vlanColor}18`,
+                                  color: line.vlanColor,
+                                  border: `1px solid ${line.vlanColor}40`
+                                }}
+                              >
+                                <span>VLAN {line.vlanId}</span>
+                                {line.vlanName && <span className="font-sans opacity-85">({line.vlanName})</span>}
+                              </span>
+                            ) : (
+                              <span className="text-slate-500 text-[11px]">Default</span>
+                            )}
+                          </td>
+                        )}
 
                         {/* Status */}
-                        <td className="py-3 px-3.5">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                            isConnected
-                              ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                              : line.status === 'damaged'
-                              ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
-                              : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500' : line.status === 'damaged' ? 'bg-rose-500' : 'bg-slate-400'}`} />
-                            {isConnected ? 'В работе' : line.status === 'damaged' ? 'Поврежден' : 'Свободен'}
-                          </span>
-                        </td>
+                        {cjVisibleColumns.includes('status') && (
+                          <td className="py-3 px-3.5">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                              isConnected
+                                ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                                : line.status === 'damaged'
+                                ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+                                : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500' : line.status === 'damaged' ? 'bg-rose-500' : 'bg-slate-400'}`} />
+                              {isConnected ? 'В работе' : line.status === 'damaged' ? 'Поврежден' : 'Свободен'}
+                            </span>
+                          </td>
+                        )}
 
                         {/* Actions */}
-                        <td className="py-3 px-3.5 text-right">
-                          <div className="inline-flex items-center gap-1">
-                            <button
-                              onClick={() => handleOpenEditLine(line)}
-                              className="p-1 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-500/10 transition-colors cursor-pointer"
-                              title="Редактировать параметры кабельной линии"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setSelectedLineIds(new Set([line.id]));
-                                setActiveTab('label_maker');
-                              }}
-                              className="p-1 rounded-lg text-slate-400 hover:text-purple-500 hover:bg-purple-500/10 transition-colors cursor-pointer"
-                              title="Создать этикетку для этой линии"
-                            >
-                              <Tag className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
+                        {cjVisibleColumns.includes('actions') && (
+                          <td className="py-3 px-3.5 text-right">
+                            <div className="inline-flex items-center gap-1">
+                              <button
+                                onClick={() => handleOpenEditLine(line)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-500/10 transition-colors cursor-pointer"
+                                title="Редактировать параметры кабельной линии"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedLineIds(new Set([line.id]));
+                                  setActiveTab('label_maker');
+                                }}
+                                className="p-1 rounded-lg text-slate-400 hover:text-purple-500 hover:bg-purple-500/10 transition-colors cursor-pointer"
+                                title="Создать этикетку для этой линии"
+                              >
+                                <Tag className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })
