@@ -346,6 +346,15 @@ export function PortItem({
             <div className={`w-8 h-1 rounded-xs border-t ${
               isLinkUp ? 'bg-cyan-500 border-cyan-400 shadow-[0_0_4px_#06b6d4]' : (isLight ? 'bg-slate-400 border-slate-500' : 'bg-slate-600 border-slate-500')
             }`} />
+
+            {/* SFP Disabled (Shutdown) Overlay */}
+            {isDisabled && (
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-950/70 rounded-xs z-10">
+                <span className="text-[8px] font-mono font-black text-rose-500 uppercase tracking-tight">
+                  OFF
+                </span>
+              </div>
+            )}
           </div>
         ) : (
           /* RJ-45 Metallic Shielded Jack with 8 Golden Pins & Notch */
@@ -387,6 +396,15 @@ export function PortItem({
                 ? 'bg-slate-200 border-slate-300'
                 : 'bg-slate-950 border-slate-700'
             }`} />
+
+            {/* RJ-45 Disabled (Shutdown) Overlay */}
+            {isDisabled && (
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-950/70 rounded-xs z-10">
+                <span className="text-[8px] font-mono font-black text-rose-500 uppercase tracking-tight">
+                  OFF
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -413,6 +431,10 @@ export function PortItem({
               title={`Текущий суммарный трафик: ↓ ${rxMbps} / ↑ ${txMbps} Мбит/с`}
             >
               {formattedTraffic}
+            </span>
+          ) : isDisabled ? (
+            <span className="inline-block text-[8px] font-mono font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-1 py-0.5 rounded-xs border border-rose-500/30">
+              OFF
             </span>
           ) : heatmapMode === 'poe' ? (
             <span
@@ -534,11 +556,13 @@ export function PortItem({
               </div>
               <div className="flex items-center gap-1">
                 <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-sm font-semibold ${
-                  isLinkUp
+                  isDisabled
+                    ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                    : isLinkUp
                     ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
                     : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
                 }`}>
-                  {isLinkUp ? `LINK UP (${speed})` : 'DOWN'}
+                  {isDisabled ? 'ОТКЛЮЧЕН (SHUTDOWN)' : isLinkUp ? `LINK UP (${speed})` : 'DOWN'}
                 </span>
                 {port.poe && (
                   <span className="text-[10px] text-amber-500 flex items-center font-mono">

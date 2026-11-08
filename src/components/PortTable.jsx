@@ -1,8 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Download, Search, Zap, Link as LinkIcon, AlertTriangle, ArrowUpRight, Filter, ChevronUp, ChevronDown, ArrowUpDown } from 'lucide-react';
+import { Download, Search, Zap, Link as LinkIcon, AlertTriangle, ArrowUpRight, Filter, ChevronUp, ChevronDown, ArrowUpDown, Power, PowerOff, RefreshCw } from 'lucide-react';
 import { VlanBadge } from './VlanBadge';
 import { checkVlanMismatch } from '../utils/vlanMismatch';
 import { TableColumnSelector } from './TableColumnSelector';
+import { api } from '../api';
+import { useToast } from '../context/ToastContext';
 
 const PORT_TABLE_COLUMNS = [
   { key: 'number', label: '#', required: true },
@@ -31,9 +33,28 @@ export function PortTable({
   vlans = [],
   onOpenPortDrawer,
   onJumpToPeer,
+  onReloadData,
   theme = 'dark'
 }) {
+  const toast = useToast();
+  const [togglingPortId, setTogglingPortId] = useState(null);
   const [filterQuery, setFilterQuery] = useState('');
+
+  const handleQuickToggle = async (port) => {
+    try {
+      const portId = port.id || port.number;
+      setTogglingPortId(portId);
+      const res = await api.controlPort(switchData.id, portId, { action: 'toggle' });
+      toast?.success?.(res.message || 'Состояние порта изменено');
+      if (onReloadData) {
+        await onReloadData();
+      }
+    } catch (err) {
+      toast?.error?.(err.message || 'Ошибка управления портом');
+    } finally {
+      setTogglingPortId(null);
+    }
+  };
 
   const [modeFilter, setModeFilter] = useState(() => {
     try {
@@ -522,12 +543,38 @@ export function PortTable({
 
                     {visibleColumns.includes('actions') && (
                       <td className="py-2.5 px-3 text-right">
-                        <button
-                          onClick={() => onOpenPortDrawer([port])}
-                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer"
-                        >
-                          Настроить
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            disabled={togglingPortId === (port.id || port.number)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleQuickToggle(port);
+                            }}
+                            className={`p-1.5 rounded-lg border transition-all cursor-pointer shadow-2xs ${
+                              port.enabled === false || port.mode === 'disabled'
+                                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-emerald-500 hover:border-emerald-500/50'
+                                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-rose-500/10 hover:border-rose-500/30 hover:text-rose-500'
+                            }`}
+                            title={port.enabled === false || port.mode === 'disabled'
+                              ? 'Включить порт на коммутаторе (no shutdown)'
+                              : 'Отключить порт на коммутаторе (shutdown)'}
+                          >
+                            {togglingPortId === (port.id || port.number) ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : port.enabled === false || port.mode === 'disabled' ? (
+                              <PowerOff className="w-3.5 h-3.5 text-rose-500" />
+                            ) : (
+                              <Power className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => onOpenPortDrawer([port])}
+                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer"
+                          >
+                            Настроить
+                          </button>
+                        </div>
                       </td>
                     )}
                   </tr>

@@ -1303,6 +1303,7 @@ export default function App() {
                     setIsTroubleshootOpen(true);
                   }}
                   onBackToList={() => setSelectedSwitchId(null)}
+                  onReloadData={fetchData}
                   theme={theme}
                 />
               ) : (

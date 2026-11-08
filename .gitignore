@@ -6,7 +6,7 @@ dist/
 
 # Local databases and backups (protect enterprise secrets)
 backups/
-data/
+/data/
 server/data/
 *.json.tmp
 *.zip

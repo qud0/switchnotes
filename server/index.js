@@ -23,6 +23,7 @@ import { initWebSshServer } from './webSshServer.js';
 import { runComprehensiveTroubleshoot } from './troubleshootEngine.js';
 import { snmpMonitorDaemon } from './snmpMonitorDaemon.js';
 import { adSyncService } from './adSyncService.js';
+import { controlSwitchPort } from './portControlService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -278,6 +279,24 @@ app.put('/api/switches/:id/ports/:portId', requireRole('engineer'), (req, res) =
     res.json(updatedPort);
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// Real-time hardware and database port control (Enable / Disable / PoE Power Cycle)
+app.post('/api/switches/:id/ports/:portId/control', requireRole('engineer'), async (req, res) => {
+  try {
+    const { action, credentials } = req.body;
+    const result = await controlSwitchPort({
+      storage,
+      switchId: req.params.id,
+      portId: req.params.portId,
+      action: action || 'toggle',
+      credentials: credentials || {},
+      user: req.user
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

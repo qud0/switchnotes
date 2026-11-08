@@ -49,6 +49,7 @@ export function SwitchFaceplate({
   onOpenWebSsh,
   onOpenTroubleshoot,
   onBackToList,
+  onReloadData,
   theme = 'dark'
 }) {
   const [activeTab, setActiveTab] = useState('faceplate'); // 'faceplate' or 'table'
@@ -819,6 +820,7 @@ export function SwitchFaceplate({
           vlans={vlans}
           onOpenPortDrawer={onOpenPortDrawer}
           onJumpToPeer={onJumpToPeer}
+          onReloadData={onReloadData}
           theme={theme}
         />
       ) : (

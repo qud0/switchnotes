@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Layers, Zap, Info, Link as LinkIcon, Unlink, AlertTriangle } from 'lucide-react';
+import { X, Check, Layers, Zap, Info, Link as LinkIcon, Unlink, AlertTriangle, Power, PowerOff, RefreshCw } from 'lucide-react';
 import { checkVlanMismatch } from '../utils/vlanMismatch';
 import { VirtualTdrTester } from './VirtualTdrTester';
 import { PortTrafficHistory } from './PortTrafficHistory';
+import { api } from '../api';
+import { useToast } from '../context/ToastContext';
 
 export function PortDrawer({
   isOpen,
@@ -30,6 +32,9 @@ export function PortDrawer({
   const [poe, setPoe] = useState(singlePort?.poe || false);
   const [enabled, setEnabled] = useState(singlePort?.enabled !== false);
   const [loading, setLoading] = useState(false);
+  const toast = useToast();
+  const [actionLoading, setActionLoading] = useState(false);
+  const [poeCycling, setPoeCycling] = useState(false);
 
   // Link state
   const [isPeerLinkActive, setIsPeerLinkActive] = useState(Boolean(singlePort?.linkedSwitchId));
@@ -184,6 +189,41 @@ export function PortDrawer({
     setPatchPanelPortId('');
   };
 
+  const handlePortAction = async (action) => {
+    if (!currentSwitchId) return;
+    try {
+      setActionLoading(true);
+      if (action === 'poe_cycle') setPoeCycling(true);
+
+      const portIdentifier = singlePort?.id || singlePort?.number;
+      const res = await api.controlPort(currentSwitchId, portIdentifier, { action });
+
+      if (action === 'enable' || action === 'disable') {
+        const nextEnabled = res.enabled;
+        setEnabled(nextEnabled);
+        if (!nextEnabled) {
+          setMode('disabled');
+        } else if (mode === 'disabled') {
+          setMode('access');
+        }
+      }
+
+      toast?.success?.(res.message || 'Действие успешно выполнено');
+
+      if (onSave) {
+        await onSave({
+          enabled: res.enabled !== undefined ? res.enabled : enabled,
+          mode: res.enabled === false ? 'disabled' : (mode === 'disabled' ? 'access' : mode)
+        });
+      }
+    } catch (err) {
+      toast?.error?.(err.message || 'Ошибка управления портом');
+    } finally {
+      setActionLoading(false);
+      setPoeCycling(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -256,6 +296,87 @@ export function PortDrawer({
 
       {/* Drawer Body */}
       <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-6 flex-1">
+        {/* Live Hardware & Admin State Port Control (Single Port) */}
+        {!isBatch && singlePort && (
+          <div className={`p-4 rounded-2xl border space-y-3 transition-all ${
+            isLight
+              ? 'bg-gradient-to-br from-slate-50 to-slate-100/70 border-slate-200'
+              : 'bg-gradient-to-br from-slate-900/90 to-slate-950 border-slate-800 shadow-md'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Power className={`w-4 h-4 ${enabled ? 'text-emerald-500' : 'text-rose-500'}`} />
+                <span className="text-xs font-bold font-mono uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                  Управление на коммутаторе
+                </span>
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wide border flex items-center gap-1.5 ${
+                enabled
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                  : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${enabled ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                {enabled ? 'Включен (no shutdown)' : 'Отключен (shutdown)'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {enabled ? (
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={() => handlePortAction('disable')}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-400 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                  title="Отключить порт на физическом коммутаторе (shutdown)"
+                >
+                  <PowerOff className="w-3.5 h-3.5" />
+                  <span>{actionLoading ? 'Выключение...' : 'Отключить порт'}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={() => handlePortAction('enable')}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                  title="Включить порт на физическом коммутаторе (no shutdown)"
+                >
+                  <Power className="w-3.5 h-3.5" />
+                  <span>{actionLoading ? 'Включение...' : 'Включить порт'}</span>
+                </button>
+              )}
+
+              {poe ? (
+                <button
+                  type="button"
+                  disabled={actionLoading || poeCycling}
+                  onClick={() => handlePortAction('poe_cycle')}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-semibold bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                  title="Обесточить порт на 4 секунды для перезагрузки камеры или точки доступа"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${poeCycling ? 'animate-spin' : ''}`} />
+                  <span>{poeCycling ? 'Сброс питания...' : 'Сброс PoE'}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={() => handlePortAction(enabled ? 'disable' : 'enable')}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                  title="Инвертировать состояние порта"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Переключить</span>
+                </button>
+              )}
+            </div>
+
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+              <Zap className="w-3 h-3 text-amber-500 shrink-0" />
+              <span>Команда отправляется на коммутатор по SNMP / SSH и меняет состояние порта в реальном времени.</span>
+            </p>
+          </div>
+        )}
+
         {/* Port Mode Switcher */}
         <div>
           <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">

@@ -113,6 +113,23 @@ export const api = {
     return res.json();
   },
 
+  controlPort: async (switchId, portId, { action = 'toggle', credentials = {} } = {}) => {
+    const res = await fetch(`${API_BASE}/switches/${switchId}/ports/${portId}/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, credentials })
+    });
+    if (!res.ok) {
+      let msg = 'Не удалось изменить состояние порта';
+      try {
+        const err = await res.json();
+        if (err.error) msg = err.error;
+      } catch {}
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
   batchUpdatePorts: async (switchId, portIds, portUpdate) => {
     const res = await fetch(`${API_BASE}/switches/${switchId}/ports/batch`, {
       method: 'POST',
