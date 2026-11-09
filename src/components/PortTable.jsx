@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Download, Search, Zap, Link as LinkIcon, AlertTriangle, ArrowUpRight, Filter, ChevronUp, ChevronDown, ArrowUpDown, Power, PowerOff, RefreshCw, Activity } from 'lucide-react';
+import { Download, Search, Zap, Link as LinkIcon, AlertTriangle, ArrowUpRight, Filter, ChevronUp, ChevronDown, ArrowUpDown, Power, PowerOff, RefreshCw, Activity, Radio } from 'lucide-react';
 import { VlanBadge } from './VlanBadge';
 import { checkVlanMismatch } from '../utils/vlanMismatch';
 import { TableColumnSelector } from './TableColumnSelector';
@@ -8,6 +8,7 @@ import { useToast } from '../context/ToastContext';
 import { calculatePortBlastRadius } from '../utils/blastRadius';
 import { BlastRadiusModal } from './BlastRadiusModal';
 import { CableTestModal } from './CableTestModal';
+import { SfpDdmModal } from './SfpDdmModal';
 
 const PORT_TABLE_COLUMNS = [
   { key: 'number', label: '#', required: true },
@@ -52,6 +53,7 @@ export function PortTable({
   const [blastPort, setBlastPort] = useState(null);
   const [blastRadiusData, setBlastRadiusData] = useState(null);
   const [cableTestPort, setCableTestPort] = useState(null);
+  const [ddmModalPort, setDdmModalPort] = useState(null);
 
   const executePortToggle = async (port) => {
     try {
@@ -513,6 +515,11 @@ export function PortTable({
                     {visibleColumns.includes('name') && (
                       <td className="py-2.5 px-3 font-mono font-medium text-slate-900 dark:text-white flex items-center gap-1.5">
                         <span>{port.name || `port ${port.number}`}</span>
+                        {port.type === 'sfp' && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded font-sans font-bold bg-purple-500/15 text-purple-400 border border-purple-500/25">
+                            {port.speed || '10G'} SFP
+                          </span>
+                        )}
                         {hasMismatch && (
                           <AlertTriangle className="w-3.5 h-3.5 text-red-500" title="Расхождение VLAN" />
                         )}
@@ -634,7 +641,19 @@ export function PortTable({
                               <Power className="w-3.5 h-3.5" />
                             )}
                           </button>
-                          {port.type !== 'sfp' && (
+                          {port.type === 'sfp' ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDdmModalPort(port);
+                              }}
+                              className="p-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 hover:border-purple-500/50 transition-all cursor-pointer shadow-2xs"
+                              title="Оптический DDM-мониторинг SFP (мощность Tx/Rx, затухание в волокне)"
+                            >
+                              <Radio className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -690,6 +709,15 @@ export function PortTable({
         onClose={() => setCableTestPort(null)}
         switchData={switchData}
         port={cableTestPort}
+        theme={theme}
+      />
+
+      {/* Optical SFP DDM Diagnostics Modal */}
+      <SfpDdmModal
+        isOpen={Boolean(ddmModalPort)}
+        onClose={() => setDdmModalPort(null)}
+        switchData={switchData}
+        port={ddmModalPort}
         theme={theme}
       />
     </div>

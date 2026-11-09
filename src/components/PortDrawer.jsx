@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Check, Layers, Zap, Info, Link as LinkIcon, Unlink, AlertTriangle, Power, PowerOff, RefreshCw } from 'lucide-react';
 import { checkVlanMismatch } from '../utils/vlanMismatch';
 import { VirtualTdrTester } from './VirtualTdrTester';
+import { SfpDdmCard } from './SfpDdmCard';
 import { PortTrafficHistory } from './PortTrafficHistory';
 import { api } from '../api';
 import { useToast } from '../context/ToastContext';
@@ -942,6 +943,16 @@ export function PortDrawer({
             cableLength={selectedPatchPanelPort?.cableLength || '25м'}
             speed={speed}
             theme={theme}
+          />
+        )}
+
+        {/* Optical DDM Transceiver Monitor (Single SFP/SFP+ Port only) */}
+        {!isBatch && singlePort && singlePort.type === 'sfp' && (
+          <SfpDdmCard
+            switchData={allSwitches.find(s => s.id === currentSwitchId)}
+            port={singlePort}
+            theme={theme}
+            showFaultSimulator={true}
           />
         )}
 

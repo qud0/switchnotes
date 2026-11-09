@@ -147,6 +147,34 @@ export const api = {
     return res.json();
   },
 
+  getPortDdm: async (switchId, portId, { mode = 'auto', faultSimulation = 'none' } = {}) => {
+    const query = new URLSearchParams({ mode, faultSimulation }).toString();
+    const res = await fetch(`${API_BASE}/switches/${switchId}/ports/${portId}/ddm?${query}`);
+    if (!res.ok) {
+      let msg = 'Ошибка получения оптической телеметрии DDM';
+      try {
+        const err = await res.json();
+        if (err.error) msg = err.error;
+      } catch {}
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
+  getSwitchDdm: async (switchId, { mode = 'auto' } = {}) => {
+    const query = new URLSearchParams({ mode }).toString();
+    const res = await fetch(`${API_BASE}/switches/${switchId}/ddm?${query}`);
+    if (!res.ok) {
+      let msg = 'Ошибка получения оптической телеметрии DDM для коммутатора';
+      try {
+        const err = await res.json();
+        if (err.error) msg = err.error;
+      } catch {}
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
   batchControlPorts: async (switchId, { portIds, action, profileData, applyToHardware = true, credentials = {} }) => {
     const res = await fetch(`${API_BASE}/switches/${switchId}/ports/batch-control`, {
       method: 'POST',

@@ -25,6 +25,7 @@ import { snmpMonitorDaemon } from './snmpMonitorDaemon.js';
 import { adSyncService } from './adSyncService.js';
 import { controlSwitchPort, batchControlSwitchPorts } from './portControlService.js';
 import { runSwitchCableTest } from './cableTestService.js';
+import { getSwitchPortDdm, getSwitchAllDdm } from './ddmService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -313,6 +314,38 @@ app.post('/api/switches/:id/ports/:portId/cable-test', requireRole('engineer'), 
       mode: mode || 'auto',
       faultSimulation: faultSimulation || 'none',
       estimatedLength: estimatedLength || '25м'
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DDM / DOM Optical Diagnostics for SFP / SFP+ Transceiver (Single port)
+app.get('/api/switches/:id/ports/:portId/ddm', requireRole('engineer'), async (req, res) => {
+  try {
+    const { mode, faultSimulation } = req.query || {};
+    const result = await getSwitchPortDdm({
+      storage,
+      switchId: req.params.id,
+      portId: req.params.portId,
+      mode: mode || 'auto',
+      faultSimulation: faultSimulation || 'none'
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DDM / DOM Optical Diagnostics for All SFP ports on switch
+app.get('/api/switches/:id/ddm', requireRole('engineer'), async (req, res) => {
+  try {
+    const { mode } = req.query || {};
+    const result = await getSwitchAllDdm({
+      storage,
+      switchId: req.params.id,
+      mode: mode || 'auto'
     });
     res.json(result);
   } catch (err) {

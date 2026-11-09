@@ -4,6 +4,7 @@ import { VlanBadge } from './VlanBadge';
 import { PortTable } from './PortTable';
 import { BatchPortActionBar } from './BatchPortActionBar';
 import { PortProfileModal } from './PortProfileModal';
+import { SfpDdmModal } from './SfpDdmModal';
 import { checkVlanMismatch } from '../utils/vlanMismatch';
 import {
   Server,
@@ -73,6 +74,7 @@ export function SwitchFaceplate({
   const [showSparklines, setShowSparklines] = useState(false);
   const [trafficHistory, setTrafficHistory] = useState({}); // portNumber -> [{ time, rxMbps, txMbps }]
   const [selectedChartPort, setSelectedChartPort] = useState(null); // port object for deep inspection modal
+  const [selectedDdmPort, setSelectedDdmPort] = useState(null); // port object for optical DDM modal
 
   // Manual & Auto SNMP Polling
   const handlePollTelemetry = async () => {
@@ -469,6 +471,26 @@ export function SwitchFaceplate({
               <Terminal className="w-3.5 h-3.5 text-emerald-400" />
               <span>Web-SSH</span>
             </button>
+
+            {/* SFP / SFP+ Optical DDM Diagnostics Button */}
+            {ports.some(p => p.type === 'sfp') && (
+              <button
+                type="button"
+                onClick={() => {
+                  const firstSfp = ports.find(p => p.type === 'sfp');
+                  if (firstSfp) setSelectedDdmPort(firstSfp);
+                }}
+                className={`h-9 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  isLight
+                    ? 'bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200'
+                    : 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-400 border-purple-500/30 shadow-xs'
+                }`}
+                title="Оптический DDM-мониторинг SFP/SFP+ (мощность Tx/Rx, затухание в волокне, температура)"
+              >
+                <Radio className="w-3.5 h-3.5 text-purple-400" />
+                <span>Оптика SFP (DDM)</span>
+              </button>
+            )}
 
             {/* Intelligent Network Troubleshooter Button */}
             <button
@@ -1425,6 +1447,15 @@ export function SwitchFaceplate({
           if (onReloadData) await onReloadData();
           setSelectedPortIds([]);
         }}
+        theme={theme}
+      />
+
+      {/* Optical SFP / SFP+ DDM Diagnostics Modal */}
+      <SfpDdmModal
+        isOpen={Boolean(selectedDdmPort)}
+        onClose={() => setSelectedDdmPort(null)}
+        switchData={switchData}
+        port={selectedDdmPort}
         theme={theme}
       />
     </div>
