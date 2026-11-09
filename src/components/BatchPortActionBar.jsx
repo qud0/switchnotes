@@ -15,12 +15,17 @@ import {
 } from 'lucide-react';
 import { api } from '../api';
 import { useToast } from '../context/ToastContext';
+import { calculateBatchBlastRadius } from '../utils/blastRadius';
+import { BlastRadiusModal } from './BlastRadiusModal';
 
 export function BatchPortActionBar({
   switchData,
   selectedPortIds = [],
   ports = [],
   vlans = [],
+  allSwitches = [],
+  ipAllocations = [],
+  servers = [],
   onClearSelection,
   onOpenProfileModal,
   onOpenBatchDrawer,
@@ -35,6 +40,8 @@ export function BatchPortActionBar({
   const [actionType, setActionType] = useState(null); // 'enable' | 'disable' | 'poe_cycle' | 'vlan'
   const [showVlanPicker, setShowVlanPicker] = useState(false);
   const [selectedVlanId, setSelectedVlanId] = useState(vlans[0]?.id || 1);
+  const [blastModalOpen, setBlastModalOpen] = useState(false);
+  const [blastRadiusData, setBlastRadiusData] = useState(null);
   const vlanPickerRef = useRef(null);
 
   // Filter selected port objects
@@ -89,19 +96,8 @@ export function BatchPortActionBar({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showVlanPicker, onClearSelection]);
 
-  // Handle batch power enable / disable
-  const handlePowerAction = async (action) => {
-    // If disabling, check if any of the ports has active links/trunks
-    if (action === 'disable') {
-      const hasUplink = selectedPorts.some(p => p.mode === 'trunk' || p.type === 'sfp' || p.linkedSwitchId);
-      if (hasUplink) {
-        const ok = window.confirm(
-          `Внимание! Среди выбранных портов есть магистральные порты (Trunk/SFP/Uplink).\nВы действительно хотите отключить ${selectedPorts.length} портов?`
-        );
-        if (!ok) return;
-      }
-    }
-
+  // Execute raw batch power action
+  const executeBatchAction = async (action) => {
     setIsActing(true);
     setActionType(action);
     try {
@@ -119,6 +115,28 @@ export function BatchPortActionBar({
       setIsActing(false);
       setActionType(null);
     }
+  };
+
+  // Handle batch power enable / disable with Blast Radius check
+  const handlePowerAction = async (action) => {
+    if (action === 'disable') {
+      const radius = calculateBatchBlastRadius({
+        switchData,
+        ports: selectedPorts,
+        allSwitches,
+        ipAllocations,
+        servers,
+        vlans
+      });
+
+      if (radius.riskLevel !== 'low') {
+        setBlastRadiusData(radius);
+        setBlastModalOpen(true);
+        return;
+      }
+    }
+
+    await executeBatchAction(action);
   };
 
   // Handle batch PoE reboot
@@ -324,6 +342,23 @@ export function BatchPortActionBar({
           <X className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Blast Radius Impact Warning Modal for Batch Actions */}
+      <BlastRadiusModal
+        isOpen={blastModalOpen}
+        onClose={() => {
+          setBlastModalOpen(false);
+          setBlastRadiusData(null);
+        }}
+        onConfirm={async () => {
+          await executeBatchAction('disable');
+        }}
+        switchData={switchData}
+        ports={selectedPorts}
+        blastRadius={blastRadiusData}
+        action="disable"
+        theme={theme}
+      />
     </div>
   );
 }

@@ -5,6 +5,8 @@ import { VirtualTdrTester } from './VirtualTdrTester';
 import { PortTrafficHistory } from './PortTrafficHistory';
 import { api } from '../api';
 import { useToast } from '../context/ToastContext';
+import { calculatePortBlastRadius, calculateBatchBlastRadius } from '../utils/blastRadius';
+import { BlastRadiusModal } from './BlastRadiusModal';
 
 export function PortDrawer({
   isOpen,
@@ -13,6 +15,8 @@ export function PortDrawer({
   vlans = [],
   allSwitches = [],
   patchPanels = [],
+  ipAllocations = [],
+  servers = [],
   currentSwitchId = null,
   onSave,
   theme = 'dark'
@@ -35,6 +39,9 @@ export function PortDrawer({
   const toast = useToast();
   const [actionLoading, setActionLoading] = useState(false);
   const [poeCycling, setPoeCycling] = useState(false);
+  const [blastModalOpen, setBlastModalOpen] = useState(false);
+  const [blastRadiusData, setBlastRadiusData] = useState(null);
+  const [pendingConfirmAction, setPendingConfirmAction] = useState(null);
 
   // Link state
   const [isPeerLinkActive, setIsPeerLinkActive] = useState(Boolean(singlePort?.linkedSwitchId));
@@ -189,7 +196,7 @@ export function PortDrawer({
     setPatchPanelPortId('');
   };
 
-  const handlePortAction = async (action) => {
+  const executePortAction = async (action) => {
     if (!currentSwitchId) return;
     try {
       setActionLoading(true);
@@ -224,6 +231,40 @@ export function PortDrawer({
     }
   };
 
+  const handlePortAction = async (action) => {
+    if (action === 'disable') {
+      const currentSwitch = allSwitches.find(s => s.id === currentSwitchId);
+      if (currentSwitch && singlePort) {
+        const radius = calculatePortBlastRadius({
+          switchData: currentSwitch,
+          port: singlePort,
+          allSwitches,
+          ipAllocations,
+          servers,
+          vlans
+        });
+
+        if (radius.riskLevel !== 'low') {
+          setBlastRadiusData(radius);
+          setPendingConfirmAction({ type: 'control', action: 'disable' });
+          setBlastModalOpen(true);
+          return;
+        }
+      }
+    }
+
+    await executePortAction(action);
+  };
+
+  const executeSubmit = async (updateData) => {
+    try {
+      await onSave(updateData);
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -251,12 +292,48 @@ export function PortDrawer({
       if (connectedTo.trim()) updateData.connectedTo = connectedTo.trim();
     }
 
-    try {
-      await onSave(updateData);
-      onClose();
-    } finally {
-      setLoading(false);
+    // Проверка риска отключения через форму настроек
+    const currentSwitch = allSwitches.find(s => s.id === currentSwitchId);
+    if (currentSwitch) {
+      if (!isBatch && singlePort && singlePort.enabled !== false && singlePort.mode !== 'disabled') {
+        const isDisabling = !updateData.enabled || updateData.mode === 'disabled';
+        if (isDisabling) {
+          const radius = calculatePortBlastRadius({
+            switchData: currentSwitch,
+            port: singlePort,
+            allSwitches,
+            ipAllocations,
+            servers,
+            vlans
+          });
+          if (radius.riskLevel !== 'low') {
+            setBlastRadiusData(radius);
+            setPendingConfirmAction({ type: 'save', updateData });
+            setBlastModalOpen(true);
+            setLoading(false);
+            return;
+          }
+        }
+      } else if (isBatch && (!updateData.enabled || updateData.mode === 'disabled')) {
+        const radius = calculateBatchBlastRadius({
+          switchData: currentSwitch,
+          ports: targetPorts,
+          allSwitches,
+          ipAllocations,
+          servers,
+          vlans
+        });
+        if (radius.riskLevel !== 'low') {
+          setBlastRadiusData(radius);
+          setPendingConfirmAction({ type: 'save', updateData });
+          setBlastModalOpen(true);
+          setLoading(false);
+          return;
+        }
+      }
     }
+
+    await executeSubmit(updateData);
   };
 
   const isLight = theme === 'light';
@@ -887,6 +964,29 @@ export function PortDrawer({
           </button>
         </div>
       </form>
+
+      {/* Blast Radius Protection Modal */}
+      <BlastRadiusModal
+        isOpen={blastModalOpen}
+        onClose={() => {
+          setBlastModalOpen(false);
+          setPendingConfirmAction(null);
+          setBlastRadiusData(null);
+        }}
+        onConfirm={async () => {
+          if (pendingConfirmAction?.type === 'control') {
+            await executePortAction(pendingConfirmAction.action);
+          } else if (pendingConfirmAction?.type === 'save') {
+            await executeSubmit(pendingConfirmAction.updateData);
+          }
+        }}
+        switchData={allSwitches.find(s => s.id === currentSwitchId) || { name: 'Коммутатор' }}
+        port={!isBatch ? singlePort : null}
+        ports={isBatch ? targetPorts : []}
+        blastRadius={blastRadiusData}
+        action="disable"
+        theme={theme}
+      />
     </div>
   );
 }

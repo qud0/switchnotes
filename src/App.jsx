@@ -1278,6 +1278,8 @@ export default function App() {
                   switchData={activeSwitch}
                   allSwitches={switches}
                   vlans={vlans}
+                  ipAllocations={ipAllocations}
+                  servers={servers}
                   onOpenPortDrawer={handleOpenPortDrawer}
                   onEditSwitch={handleEditSwitch}
                   onDeleteSwitch={handleDeleteSwitch}
@@ -1359,6 +1361,8 @@ export default function App() {
         vlans={vlans}
         allSwitches={switches}
         patchPanels={patchPanels}
+        ipAllocations={ipAllocations}
+        servers={servers}
         currentSwitchId={activeSwitch?.id}
         onSave={handleSavePorts}
         theme={theme}

@@ -5,6 +5,8 @@ import { checkVlanMismatch } from '../utils/vlanMismatch';
 import { TableColumnSelector } from './TableColumnSelector';
 import { api } from '../api';
 import { useToast } from '../context/ToastContext';
+import { calculatePortBlastRadius } from '../utils/blastRadius';
+import { BlastRadiusModal } from './BlastRadiusModal';
 
 const PORT_TABLE_COLUMNS = [
   { key: 'number', label: '#', required: true },
@@ -31,6 +33,8 @@ export function PortTable({
   switchData,
   allSwitches = [],
   vlans = [],
+  ipAllocations = [],
+  servers = [],
   selectedPortIds = [],
   onToggleSelectPort,
   onSelectAllPorts,
@@ -43,8 +47,11 @@ export function PortTable({
   const toast = useToast();
   const [togglingPortId, setTogglingPortId] = useState(null);
   const [filterQuery, setFilterQuery] = useState('');
+  const [blastModalOpen, setBlastModalOpen] = useState(false);
+  const [blastPort, setBlastPort] = useState(null);
+  const [blastRadiusData, setBlastRadiusData] = useState(null);
 
-  const handleQuickToggle = async (port) => {
+  const executePortToggle = async (port) => {
     try {
       const portId = port.id || port.number;
       setTogglingPortId(portId);
@@ -58,6 +65,30 @@ export function PortTable({
     } finally {
       setTogglingPortId(null);
     }
+  };
+
+  const handleQuickToggle = async (port) => {
+    // If the port is currently enabled, toggling it means disabling (shutdown) it!
+    const isCurrentlyActive = port.enabled !== false && port.mode !== 'disabled';
+    if (isCurrentlyActive) {
+      const radius = calculatePortBlastRadius({
+        switchData,
+        port,
+        allSwitches,
+        ipAllocations,
+        servers,
+        vlans
+      });
+
+      if (radius.riskLevel !== 'low') {
+        setBlastPort(port);
+        setBlastRadiusData(radius);
+        setBlastModalOpen(true);
+        return;
+      }
+    }
+
+    await executePortToggle(port);
   };
 
   const [modeFilter, setModeFilter] = useState(() => {
@@ -617,6 +648,26 @@ export function PortTable({
           </tbody>
         </table>
       </div>
+
+      {/* Blast Radius Warning Modal for Single Port Quick Toggle */}
+      <BlastRadiusModal
+        isOpen={blastModalOpen}
+        onClose={() => {
+          setBlastModalOpen(false);
+          setBlastPort(null);
+          setBlastRadiusData(null);
+        }}
+        onConfirm={async () => {
+          if (blastPort) {
+            await executePortToggle(blastPort);
+          }
+        }}
+        switchData={switchData}
+        port={blastPort}
+        blastRadius={blastRadiusData}
+        action="disable"
+        theme={theme}
+      />
     </div>
   );
 }

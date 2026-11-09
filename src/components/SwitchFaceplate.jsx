@@ -41,6 +41,8 @@ export function SwitchFaceplate({
   switchData,
   allSwitches = [],
   vlans = [],
+  ipAllocations = [],
+  servers = [],
   onOpenPortDrawer,
   onEditSwitch,
   onDeleteSwitch,
@@ -921,6 +923,8 @@ export function SwitchFaceplate({
           switchData={switchData}
           allSwitches={allSwitches}
           vlans={vlans}
+          ipAllocations={ipAllocations}
+          servers={servers}
           selectedPortIds={selectedPortIds}
           onToggleSelectPort={handleToggleSelect}
           onSelectAllPorts={(ids) => setSelectedPortIds(ids)}
@@ -1397,9 +1401,12 @@ export function SwitchFaceplate({
       {/* Floating Bottom Action Bar for Multi-Select Ports */}
       <BatchPortActionBar
         switchData={switchData}
+        allSwitches={allSwitches}
         selectedPortIds={selectedPortIds}
         ports={ports}
         vlans={vlans}
+        ipAllocations={ipAllocations}
+        servers={servers}
         onClearSelection={handleClearSelection}
         onOpenProfileModal={() => setIsProfileModalOpen(true)}
         onOpenBatchDrawer={handleBatchEdit}
