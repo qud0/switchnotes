@@ -934,6 +934,8 @@ export function PortDrawer({
         {/* Virtual TDR Cable Tester Tool (Single Port only) */}
         {!isBatch && singlePort && singlePort.type !== 'sfp' && (
           <VirtualTdrTester
+            switchData={allSwitches.find(s => s.id === currentSwitchId)}
+            port={singlePort}
             portNumber={singlePort.number}
             portName={singlePort.name || `Порт ${singlePort.number}`}
             connectedSocket={selectedPatchPanelPort?.socket || connectedTo || `Р-${singlePort.number}`}

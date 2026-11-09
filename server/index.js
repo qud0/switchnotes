@@ -24,6 +24,7 @@ import { runComprehensiveTroubleshoot } from './troubleshootEngine.js';
 import { snmpMonitorDaemon } from './snmpMonitorDaemon.js';
 import { adSyncService } from './adSyncService.js';
 import { controlSwitchPort, batchControlSwitchPorts } from './portControlService.js';
+import { runSwitchCableTest } from './cableTestService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -293,6 +294,25 @@ app.post('/api/switches/:id/ports/:portId/control', requireRole('engineer'), asy
       action: action || 'toggle',
       credentials: credentials || {},
       user: req.user
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Hardware and simulated TDR Cable Diagnostics on real switches (SNR, MikroTik, Cisco)
+app.post('/api/switches/:id/ports/:portId/cable-test', requireRole('engineer'), async (req, res) => {
+  try {
+    const { mode, credentials, faultSimulation, estimatedLength } = req.body || {};
+    const result = await runSwitchCableTest({
+      storage,
+      switchId: req.params.id,
+      portId: req.params.portId,
+      credentials: credentials || {},
+      mode: mode || 'auto',
+      faultSimulation: faultSimulation || 'none',
+      estimatedLength: estimatedLength || '25м'
     });
     res.json(result);
   } catch (err) {

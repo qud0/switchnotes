@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Download, Search, Zap, Link as LinkIcon, AlertTriangle, ArrowUpRight, Filter, ChevronUp, ChevronDown, ArrowUpDown, Power, PowerOff, RefreshCw } from 'lucide-react';
+import { Download, Search, Zap, Link as LinkIcon, AlertTriangle, ArrowUpRight, Filter, ChevronUp, ChevronDown, ArrowUpDown, Power, PowerOff, RefreshCw, Activity } from 'lucide-react';
 import { VlanBadge } from './VlanBadge';
 import { checkVlanMismatch } from '../utils/vlanMismatch';
 import { TableColumnSelector } from './TableColumnSelector';
@@ -7,6 +7,7 @@ import { api } from '../api';
 import { useToast } from '../context/ToastContext';
 import { calculatePortBlastRadius } from '../utils/blastRadius';
 import { BlastRadiusModal } from './BlastRadiusModal';
+import { CableTestModal } from './CableTestModal';
 
 const PORT_TABLE_COLUMNS = [
   { key: 'number', label: '#', required: true },
@@ -50,6 +51,7 @@ export function PortTable({
   const [blastModalOpen, setBlastModalOpen] = useState(false);
   const [blastPort, setBlastPort] = useState(null);
   const [blastRadiusData, setBlastRadiusData] = useState(null);
+  const [cableTestPort, setCableTestPort] = useState(null);
 
   const executePortToggle = async (port) => {
     try {
@@ -632,6 +634,19 @@ export function PortTable({
                               <Power className="w-3.5 h-3.5" />
                             )}
                           </button>
+                          {port.type !== 'sfp' && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCableTestPort(port);
+                              }}
+                              className="p-1.5 rounded-lg border border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 hover:border-blue-500/40 transition-all cursor-pointer shadow-2xs"
+                              title="Аппаратный тест кабеля TDR (длина пар, обрывы, замыкания)"
+                            >
+                              <Activity className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             onClick={() => onOpenPortDrawer([port])}
                             className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer"
@@ -666,6 +681,15 @@ export function PortTable({
         port={blastPort}
         blastRadius={blastRadiusData}
         action="disable"
+        theme={theme}
+      />
+
+      {/* Hardware TDR Cable Test Modal */}
+      <CableTestModal
+        isOpen={Boolean(cableTestPort)}
+        onClose={() => setCableTestPort(null)}
+        switchData={switchData}
+        port={cableTestPort}
         theme={theme}
       />
     </div>

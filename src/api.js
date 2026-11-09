@@ -130,6 +130,23 @@ export const api = {
     return res.json();
   },
 
+  runCableTest: async (switchId, portId, { mode = 'auto', faultSimulation = 'none', estimatedLength = '25м', credentials = {} } = {}) => {
+    const res = await fetch(`${API_BASE}/switches/${switchId}/ports/${portId}/cable-test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, faultSimulation, estimatedLength, credentials })
+    });
+    if (!res.ok) {
+      let msg = 'Ошибка выполнения теста кабеля';
+      try {
+        const err = await res.json();
+        if (err.error) msg = err.error;
+      } catch {}
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
   batchControlPorts: async (switchId, { portIds, action, profileData, applyToHardware = true, credentials = {} }) => {
     const res = await fetch(`${API_BASE}/switches/${switchId}/ports/batch-control`, {
       method: 'POST',
