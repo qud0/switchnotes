@@ -31,6 +31,10 @@ export function PortTable({
   switchData,
   allSwitches = [],
   vlans = [],
+  selectedPortIds = [],
+  onToggleSelectPort,
+  onSelectAllPorts,
+  onClearSelection,
   onOpenPortDrawer,
   onJumpToPeer,
   onReloadData,
@@ -350,6 +354,21 @@ export function PortTable({
             isLight ? 'bg-slate-50/95 border-slate-200 text-slate-700 backdrop-blur-md' : 'bg-slate-950/95 border-slate-800 text-slate-300 backdrop-blur-md'
           }`}>
             <tr>
+              <th className="py-2.5 px-3 w-8 text-center">
+                <input
+                  type="checkbox"
+                  checked={sortedPorts.length > 0 && sortedPorts.every(p => selectedPortIds.includes(p.id))}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      onSelectAllPorts?.(sortedPorts.map(p => p.id));
+                    } else {
+                      onClearSelection?.();
+                    }
+                  }}
+                  className="accent-blue-600 rounded cursor-pointer"
+                  title="Выбрать все отфильтрованные порты"
+                />
+              </th>
               {visibleColumns.includes('number') && (
                 <th onClick={() => handleSort('number')} className="py-2.5 px-3 cursor-pointer hover:text-blue-500 transition-colors select-none">
                   <div className="flex items-center gap-1">
@@ -419,7 +438,7 @@ export function PortTable({
           }`}>
             {sortedPorts.length === 0 ? (
               <tr>
-                <td colSpan={visibleColumns.length} className="py-8 text-center text-slate-400">
+                <td colSpan={visibleColumns.length + 1} className="py-8 text-center text-slate-400">
                   По заданному фильтру порты не найдены
                 </td>
               </tr>
@@ -430,14 +449,28 @@ export function PortTable({
                 const peerPort = peerSw?.ports?.find(p => p.id === port.linkedPortId || p.number === port.linkedPortId);
                 const mismatch = peerPort ? checkVlanMismatch(port, peerPort) : null;
                 const hasMismatch = mismatch?.hasMismatch;
+                const isSelected = selectedPortIds.includes(port.id);
 
                 return (
                   <tr
                     key={port.id}
-                    className={`transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 ${
-                      hasMismatch ? 'bg-red-500/5' : ''
+                    onClick={() => onToggleSelectPort?.(port.id)}
+                    className={`cursor-pointer transition-colors ${
+                      isSelected
+                        ? (isLight ? 'bg-blue-50 hover:bg-blue-100/70' : 'bg-blue-950/35 hover:bg-blue-900/40')
+                        : hasMismatch
+                          ? 'bg-red-500/5 hover:bg-red-500/10'
+                          : (isLight ? 'hover:bg-slate-50' : 'hover:bg-slate-800/50')
                     }`}
                   >
+                    <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => onToggleSelectPort?.(port.id)}
+                        className="accent-blue-600 rounded cursor-pointer"
+                      />
+                    </td>
                     {visibleColumns.includes('number') && (
                       <td className="py-2.5 px-3 font-mono font-bold text-slate-400">
                         {port.number}

@@ -130,6 +130,23 @@ export const api = {
     return res.json();
   },
 
+  batchControlPorts: async (switchId, { portIds, action, profileData, applyToHardware = true, credentials = {} }) => {
+    const res = await fetch(`${API_BASE}/switches/${switchId}/ports/batch-control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ portIds, action, profileData, applyToHardware, credentials })
+    });
+    if (!res.ok) {
+      let msg = 'Ошибка пакетного управления портами';
+      try {
+        const err = await res.json();
+        if (err.error) msg = err.error;
+      } catch {}
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
   batchUpdatePorts: async (switchId, portIds, portUpdate) => {
     const res = await fetch(`${API_BASE}/switches/${switchId}/ports/batch`, {
       method: 'POST',

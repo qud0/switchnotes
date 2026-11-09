@@ -163,9 +163,9 @@ export function PortItem({
       : (nativeVlan ? nativeVlan.color : '#3b82f6'));
 
   const handleClick = (e) => {
-    if (selectionMode || e.shiftKey || e.ctrlKey) {
+    if (selectionMode || e.shiftKey || e.ctrlKey || e.metaKey) {
       e.stopPropagation();
-      onSelect(port.id);
+      onSelect(port.id, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey || e.metaKey });
     } else {
       onOpenDetails(port);
     }

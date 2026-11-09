@@ -290,3 +290,285 @@ export async function controlSwitchPort({
       : `Порт ${ifName} успешно ${targetEnabled ? 'включен' : 'отключен'}.`
   };
 }
+
+/**
+ * Пакетное управление группой портов (Массовое включение/отключение, сброс PoE, применение профилей)
+ */
+export async function batchControlSwitchPorts({
+  storage,
+  switchId,
+  portIds = [],
+  action = 'enable', // 'enable' | 'disable' | 'poe_cycle' | 'apply_profile'
+  profileData = {},
+  applyToHardware = true,
+  credentials = {},
+  user = null
+}) {
+  const sw = storage.getSwitchById(switchId);
+  if (!sw) {
+    throw new Error('Коммутатор не найден');
+  }
+
+  // Находим все валидные порты
+  const targetPorts = sw.ports.filter(p => portIds.includes(p.id) || portIds.includes(p.number));
+  if (targetPorts.length === 0) {
+    throw new Error('Не найдено ни одного указанного порта');
+  }
+
+  // Сортируем порты по номеру
+  targetPorts.sort((a, b) => (a.number || 0) - (b.number || 0));
+  const vendor = sw.vendor || 'SNR';
+  const v = vendor.toLowerCase();
+  const executionLog = [];
+  let hardwareApplied = false;
+  let hardwareError = null;
+
+  // Имена интерфейсов
+  const ifNames = targetPorts.map(p => resolveInterfaceName(vendor, p));
+
+  if (action === 'enable' || action === 'disable') {
+    const targetEnabled = action === 'enable';
+
+    // 1. Применение на оборудовании
+    if (applyToHardware && sw.ip) {
+      // Пробуем SNMP SET если включен
+      if (sw.snmpEnabled !== false && (sw.snmpWriteCommunity || sw.snmpCommunity)) {
+        try {
+          const snmpPromises = targetPorts.map(p => setPortAdminStatusSnmp(sw, p.number || 1, targetEnabled));
+          const snmpResults = await Promise.allSettled(snmpPromises);
+          const succeeded = snmpResults.filter(r => r.status === 'fulfilled').length;
+          if (succeeded > 0) {
+            executionLog.push(`SNMP v2c SET ifAdminStatus=${targetEnabled ? 1 : 2} отправлен на ${succeeded} из ${targetPorts.length} портов`);
+            hardwareApplied = true;
+          }
+        } catch (snmpErr) {
+          executionLog.push(`SNMP SET ошибка: ${snmpErr.message}, переключаемся на SSH CLI...`);
+        }
+      }
+
+      // Если SNMP не настроен или дал ошибку — отправляем через SSH range
+      if (!hardwareApplied) {
+        try {
+          let sshCmd = '';
+          if (v.includes('snr')) {
+            const minNum = targetPorts[0].number;
+            const maxNum = targetPorts[targetPorts.length - 1].number;
+            const isConsecutive = targetPorts.length === (maxNum - minNum + 1);
+
+            let rangeStr = '';
+            if (isConsecutive && targetPorts.length > 1) {
+              const prefix = targetPorts[0].type === 'sfp' ? 'TenGigabitEthernet 1/0/' : 'GigabitEthernet 1/0/';
+              rangeStr = `${prefix}${minNum} - ${maxNum}`;
+            } else {
+              rangeStr = ifNames.join(', ');
+            }
+
+            sshCmd = `configure terminal\ninterface range ${rangeStr}\n${targetEnabled ? 'no shutdown' : 'shutdown'}\nexit\nwrite\n`;
+          } else if (v.includes('mikrotik')) {
+            const ifList = targetPorts.map(p => `name=${p.name || `ether${p.number}`}`).join(' or ');
+            sshCmd = `/interface set [find ${ifList}] disabled=${targetEnabled ? 'no' : 'yes'}\n`;
+          } else if (v.includes('cisco') || v.includes('eltex')) {
+            sshCmd = `configure terminal\ninterface range ${ifNames.join(', ')}\n${targetEnabled ? 'no shutdown' : 'shutdown'}\nexit\nwrite\n`;
+          } else if (v.includes('ubiquiti') || v.includes('unifi')) {
+            sshCmd = `enable\nconfigure\ninterface range 0/${targetPorts[0].number}-0/${targetPorts[targetPorts.length - 1].number}\n${targetEnabled ? 'no shutdown' : 'shutdown'}\nexit\nwrite memory\n`;
+          }
+
+          if (sshCmd) {
+            await executeSshCommand({
+              host: sw.ip,
+              port: credentials.port || sw.sshPort || 22,
+              username: credentials.username || sw.sshUsername || 'admin',
+              password: credentials.password || sw.sshPassword || '',
+              command: sshCmd,
+              timeout: 8000
+            });
+            executionLog.push(`SSH range команда «${targetEnabled ? 'no shutdown' : 'shutdown'}» выполнена на ${sw.ip}`);
+            hardwareApplied = true;
+          }
+        } catch (sshErr) {
+          hardwareError = `Ошибка SSH: ${sshErr.message}`;
+          executionLog.push(hardwareError);
+        }
+      }
+    } else {
+      executionLog.push('Коммутатор работает в автономном режиме, изменения записаны в базу данных.');
+      hardwareApplied = true;
+    }
+
+    // 2. Обновление в базе данных
+    const portUpdate = {
+      enabled: targetEnabled,
+      mode: targetEnabled ? 'access' : 'disabled'
+    };
+    storage.batchUpdatePorts(switchId, targetPorts.map(p => p.id), portUpdate);
+
+    storage.logAction({
+      entity: 'switches',
+      action: targetEnabled ? 'batch_port_enable' : 'batch_port_disable',
+      description: `Массовое ${targetEnabled ? 'включение' : 'отключение'} ${targetPorts.length} портов на коммутаторе ${sw.name}`,
+      user: user?.username || 'инженер'
+    });
+
+  } else if (action === 'poe_cycle') {
+    const poePorts = targetPorts.filter(p => p.poe || sw.poe);
+    if (poePorts.length === 0) {
+      throw new Error('Среди выбранных портов нет портов с поддержкой технологии PoE');
+    }
+
+    if (applyToHardware && sw.ip) {
+      try {
+        let cmdDisable = '';
+        let cmdEnable = '';
+
+        if (v.includes('snr')) {
+          const poeIfNames = poePorts.map(p => resolveInterfaceName(vendor, p)).join(', ');
+          cmdDisable = `configure terminal\ninterface range ${poeIfNames}\npoe disable\nexit\n`;
+          cmdEnable = `configure terminal\ninterface range ${poeIfNames}\npoe enable\nexit\nwrite\n`;
+        } else if (v.includes('cisco')) {
+          const poeIfNames = poePorts.map(p => resolveInterfaceName(vendor, p)).join(', ');
+          cmdDisable = `configure terminal\ninterface range ${poeIfNames}\npower inline never\nexit\n`;
+          cmdEnable = `configure terminal\ninterface range ${poeIfNames}\npower inline auto\nexit\nwrite\n`;
+        } else if (v.includes('mikrotik')) {
+          const ifList = poePorts.map(p => `name=${p.name || `ether${p.number}`}`).join(' or ');
+          cmdDisable = `/interface ethernet poe set [find ${ifList}] poe-out=off\n`;
+          cmdEnable = `/interface ethernet poe set [find ${ifList}] poe-out=auto-on\n`;
+        }
+
+        if (cmdDisable && cmdEnable) {
+          await executeSshCommand({
+            host: sw.ip,
+            port: credentials.port || sw.sshPort || 22,
+            username: credentials.username || sw.sshUsername || 'admin',
+            password: credentials.password || sw.sshPassword || '',
+            command: cmdDisable,
+            timeout: 6000
+          });
+          executionLog.push(`[1/3] Питание PoE снято на ${poePorts.length} портах`);
+
+          await new Promise(r => setTimeout(r, 3500));
+          executionLog.push(`[2/3] Выдержана технологическая пауза (3.5 сек.)`);
+
+          await executeSshCommand({
+            host: sw.ip,
+            port: credentials.port || sw.sshPort || 22,
+            username: credentials.username || sw.sshUsername || 'admin',
+            password: credentials.password || sw.sshPassword || '',
+            command: cmdEnable,
+            timeout: 6000
+          });
+          executionLog.push(`[3/3] Питание PoE подано повторно, устройства перезагружаются`);
+          hardwareApplied = true;
+        }
+      } catch (sshErr) {
+        hardwareError = `Ошибка SSH при сбросе PoE: ${sshErr.message}`;
+        executionLog.push(hardwareError);
+      }
+    } else {
+      executionLog.push('Сброс питания выполнен в локальной схеме SwitchBook.');
+      hardwareApplied = true;
+    }
+
+    storage.logAction({
+      entity: 'switches',
+      action: 'batch_poe_cycle',
+      description: `Массовый перезапуск питания PoE (${poePorts.length} портов) на коммутаторе ${sw.name}`,
+      user: user?.username || 'инженер'
+    });
+
+  } else if (action === 'apply_profile') {
+    const {
+      mode = 'access',
+      pvid = 1,
+      taggedVlans = [],
+      poe = false,
+      speed = '1G',
+      enabled = true,
+      description = '',
+      connectedTo = '',
+      profileName = ''
+    } = profileData;
+
+    // 1. Применение на физический свитч
+    if (applyToHardware && sw.ip) {
+      try {
+        let script = '';
+        if (v.includes('snr')) {
+          const rangeStr = ifNames.join(', ');
+          script = `configure terminal\ninterface range ${rangeStr}\n`;
+          if (description) script += ` description ${description}\n`;
+          if (mode === 'access') {
+            script += ` switchport mode access\n switchport access vlan ${pvid}\n spanning-tree portfast\n`;
+          } else if (mode === 'trunk') {
+            script += ` switchport mode trunk\n switchport trunk native vlan ${pvid}\n`;
+            if (taggedVlans.length > 0) script += ` switchport trunk allowed vlan ${taggedVlans.join(',')}\n`;
+          }
+          if (poe !== undefined) {
+            script += poe ? ` poe enable\n` : ` poe disable\n`;
+          }
+          script += enabled ? ` no shutdown\n` : ` shutdown\n`;
+          script += `exit\nwrite\n`;
+        } else if (v.includes('mikrotik')) {
+          const ifList = targetPorts.map(p => `name=${p.name || `ether${p.number}`}`).join(' or ');
+          script = `/interface set [find ${ifList}] disabled=${enabled ? 'no' : 'yes'} comment="${description}"\n`;
+          if (mode === 'access') {
+            script += `/interface bridge port set [find ${ifList}] pvid=${pvid}\n`;
+          }
+        }
+
+        if (script) {
+          await executeSshCommand({
+            host: sw.ip,
+            port: credentials.port || sw.sshPort || 22,
+            username: credentials.username || sw.sshUsername || 'admin',
+            password: credentials.password || sw.sshPassword || '',
+            command: script,
+            timeout: 10000
+          });
+          executionLog.push(`Конфигурация профиля успешно применена на оборудовании ${sw.ip}`);
+          hardwareApplied = true;
+        }
+      } catch (sshErr) {
+        hardwareError = `Ошибка применения профиля по SSH: ${sshErr.message}`;
+        executionLog.push(hardwareError);
+      }
+    } else {
+      executionLog.push('Профиль применен в базе данных SwitchBook.');
+      hardwareApplied = true;
+    }
+
+    // 2. Обновление в БД
+    const portUpdate = {
+      mode: enabled ? mode : 'disabled',
+      pvid: parseInt(pvid) || 1,
+      taggedVlans: mode === 'trunk' ? (Array.isArray(taggedVlans) ? taggedVlans : []) : [],
+      poe: Boolean(poe),
+      speed: speed || '1G',
+      enabled: Boolean(enabled)
+    };
+    if (description) portUpdate.description = description;
+    if (connectedTo) portUpdate.connectedTo = connectedTo;
+
+    storage.batchUpdatePorts(switchId, targetPorts.map(p => p.id), portUpdate);
+
+    storage.logAction({
+      entity: 'switches',
+      action: 'batch_apply_profile',
+      description: `Применение профиля «${profileName || mode}» к ${targetPorts.length} портам на коммутаторе ${sw.name}`,
+      user: user?.username || 'инженер'
+    });
+  }
+
+  const updatedSwitch = storage.getSwitchById(switchId);
+
+  return {
+    success: true,
+    action,
+    updatedCount: targetPorts.length,
+    ports: targetPorts.map(p => p.number),
+    hardwareApplied,
+    hardwareError,
+    log: executionLog,
+    switch: updatedSwitch,
+    message: `Действие «${action}» успешно выполнено для ${targetPorts.length} портов.`
+  };
+}

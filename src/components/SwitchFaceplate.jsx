@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { PortItem } from './PortItem';
 import { VlanBadge } from './VlanBadge';
 import { PortTable } from './PortTable';
+import { BatchPortActionBar } from './BatchPortActionBar';
+import { PortProfileModal } from './PortProfileModal';
 import { checkVlanMismatch } from '../utils/vlanMismatch';
 import {
   Server,
@@ -56,6 +58,8 @@ export function SwitchFaceplate({
   const [highlightVlanId, setHighlightVlanId] = useState(null);
   const [selectedPortIds, setSelectedPortIds] = useState([]);
   const [selectionMode, setSelectionMode] = useState(false);
+  const [lastSelectedPortId, setLastSelectedPortId] = useState(null);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [showCableTags, setShowCableTags] = useState(false);
   const [heatmapMode, setHeatmapMode] = useState('none'); // 'none' | 'poe' | 'speed'
 
@@ -194,7 +198,21 @@ export function SwitchFaceplate({
   }, [ports, switchesMap, switchData, copperPorts]);
 
   // Selection handlers
-  const handleToggleSelect = (portId) => {
+  const handleToggleSelect = (portId, options = {}) => {
+    if (options.shiftKey && lastSelectedPortId && lastSelectedPortId !== portId) {
+      const pIdx1 = ports.findIndex(p => p.id === lastSelectedPortId);
+      const pIdx2 = ports.findIndex(p => p.id === portId);
+      if (pIdx1 !== -1 && pIdx2 !== -1) {
+        const start = Math.min(pIdx1, pIdx2);
+        const end = Math.max(pIdx1, pIdx2);
+        const rangeIds = ports.slice(start, end + 1).map(p => p.id);
+        setSelectedPortIds(prev => Array.from(new Set([...prev, ...rangeIds])));
+        setLastSelectedPortId(portId);
+        return;
+      }
+    }
+
+    setLastSelectedPortId(portId);
     setSelectedPortIds(prev =>
       prev.includes(portId) ? prev.filter(id => id !== portId) : [...prev, portId]
     );
@@ -204,8 +222,31 @@ export function SwitchFaceplate({
     setSelectedPortIds(ports.map(p => p.id));
   };
 
+  const handleSelectRange = (startNum, endNum) => {
+    const rangeIds = ports
+      .filter(p => p.number >= startNum && p.number <= endNum)
+      .map(p => p.id);
+    setSelectedPortIds(rangeIds);
+  };
+
+  const handleSelectSfp = () => {
+    const sfpIds = ports.filter(p => p.type === 'sfp').map(p => p.id);
+    setSelectedPortIds(sfpIds);
+  };
+
+  const handleSelectPoe = () => {
+    const poeIds = ports.filter(p => p.poe).map(p => p.id);
+    setSelectedPortIds(poeIds);
+  };
+
+  const handleSelectDisabled = () => {
+    const offIds = ports.filter(p => p.enabled === false || p.mode === 'disabled').map(p => p.id);
+    setSelectedPortIds(offIds);
+  };
+
   const handleClearSelection = () => {
     setSelectedPortIds([]);
+    setLastSelectedPortId(null);
     setSelectionMode(false);
   };
 
@@ -739,47 +780,109 @@ export function SwitchFaceplate({
             {/* Batch Selection Toggle */}
             <button
               onClick={() => {
-                setSelectionMode(!selectionMode);
-                if (selectionMode) setSelectedPortIds([]);
+                const nextMode = !selectionMode;
+                setSelectionMode(nextMode);
+                if (!nextMode) setSelectedPortIds([]);
               }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                 selectionMode
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-blue-600 text-white shadow-xs'
                   : (isLight
                       ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-300')
               }`}
+              title="Включить режим множественного выбора портов для пакетной настройки"
             >
               <CheckSquare className="w-3.5 h-3.5" />
-              {selectionMode ? 'Выделение активно' : 'Группа портов'}
+              <span>{selectionMode ? 'Выбор активен' : 'Мульти-выбор'}</span>
             </button>
 
             {selectionMode && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 flex-wrap">
                 <button
                   onClick={handleSelectAll}
-                  className={`px-2 py-1 rounded-md text-xs ${
+                  className={`px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                     isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-800' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
                   }`}
                 >
-                  Все
+                  Все ({ports.length})
                 </button>
+                {copperPorts.length >= 24 && (
+                  <>
+                    <button
+                      onClick={() => handleSelectRange(1, 12)}
+                      className={`px-2 py-1 rounded-md text-xs font-mono transition-colors cursor-pointer ${
+                        isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-800' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                      }`}
+                    >
+                      1–12
+                    </button>
+                    <button
+                      onClick={() => handleSelectRange(13, 24)}
+                      className={`px-2 py-1 rounded-md text-xs font-mono transition-colors cursor-pointer ${
+                        isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-800' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                      }`}
+                    >
+                      13–24
+                    </button>
+                  </>
+                )}
+                {copperPorts.length >= 48 && (
+                  <button
+                    onClick={() => handleSelectRange(25, 48)}
+                    className={`px-2 py-1 rounded-md text-xs font-mono transition-colors cursor-pointer ${
+                      isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-800' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                    }`}
+                  >
+                    25–48
+                  </button>
+                )}
+                {sfpPorts.length > 0 && (
+                  <button
+                    onClick={handleSelectSfp}
+                    className={`px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                      isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-800' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                    }`}
+                  >
+                    SFP ({sfpPorts.length})
+                  </button>
+                )}
+                {switchData.poe && (
+                  <button
+                    onClick={handleSelectPoe}
+                    className={`px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer text-amber-400 ${
+                      isLight ? 'bg-amber-100 hover:bg-amber-200' : 'bg-amber-950/40 hover:bg-amber-900/60 border border-amber-800/40'
+                    }`}
+                  >
+                    PoE
+                  </button>
+                )}
                 <button
                   onClick={handleClearSelection}
-                  className={`px-2 py-1 rounded-md text-xs ${
+                  className={`px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                     isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-600' : 'bg-slate-800 hover:bg-slate-700 text-slate-400'
                   }`}
                 >
                   Снять
                 </button>
+
                 {selectedPortIds.length > 0 && (
-                  <button
-                    onClick={handleBatchEdit}
-                    className="flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-xs font-medium shadow-sm cursor-pointer"
-                  >
-                    <Sliders className="w-3 h-3" />
-                    Настроить ({selectedPortIds.length})
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setIsProfileModalOpen(true)}
+                      className="flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-xs font-medium shadow-xs cursor-pointer ml-1"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>Профиль ({selectedPortIds.length})</span>
+                    </button>
+                    <button
+                      onClick={handleBatchEdit}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-md text-xs font-medium shadow-xs cursor-pointer"
+                    >
+                      <Sliders className="w-3 h-3" />
+                      <span>Детально</span>
+                    </button>
+                  </>
                 )}
               </div>
             )}
@@ -818,6 +921,10 @@ export function SwitchFaceplate({
           switchData={switchData}
           allSwitches={allSwitches}
           vlans={vlans}
+          selectedPortIds={selectedPortIds}
+          onToggleSelectPort={handleToggleSelect}
+          onSelectAllPorts={(ids) => setSelectedPortIds(ids)}
+          onClearSelection={handleClearSelection}
           onOpenPortDrawer={onOpenPortDrawer}
           onJumpToPeer={onJumpToPeer}
           onReloadData={onReloadData}
@@ -1287,6 +1394,32 @@ export function SwitchFaceplate({
           theme={theme}
         />
       )}
+      {/* Floating Bottom Action Bar for Multi-Select Ports */}
+      <BatchPortActionBar
+        switchData={switchData}
+        selectedPortIds={selectedPortIds}
+        ports={ports}
+        vlans={vlans}
+        onClearSelection={handleClearSelection}
+        onOpenProfileModal={() => setIsProfileModalOpen(true)}
+        onOpenBatchDrawer={handleBatchEdit}
+        onReloadData={onReloadData}
+        theme={theme}
+      />
+
+      {/* Port Profile Preset Modal */}
+      <PortProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        switchData={switchData}
+        selectedPorts={ports.filter(p => selectedPortIds.includes(p.id))}
+        vlans={vlans}
+        onSuccess={async () => {
+          if (onReloadData) await onReloadData();
+          setSelectedPortIds([]);
+        }}
+        theme={theme}
+      />
     </div>
   );
 }

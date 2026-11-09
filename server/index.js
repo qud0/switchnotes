@@ -23,7 +23,7 @@ import { initWebSshServer } from './webSshServer.js';
 import { runComprehensiveTroubleshoot } from './troubleshootEngine.js';
 import { snmpMonitorDaemon } from './snmpMonitorDaemon.js';
 import { adSyncService } from './adSyncService.js';
-import { controlSwitchPort } from './portControlService.js';
+import { controlSwitchPort, batchControlSwitchPorts } from './portControlService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -291,6 +291,29 @@ app.post('/api/switches/:id/ports/:portId/control', requireRole('engineer'), asy
       switchId: req.params.id,
       portId: req.params.portId,
       action: action || 'toggle',
+      credentials: credentials || {},
+      user: req.user
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Real-time batch port control (Enable / Disable / PoE Cycle / Apply Profile)
+app.post('/api/switches/:id/ports/batch-control', requireRole('engineer'), async (req, res) => {
+  try {
+    const { portIds, action, profileData, applyToHardware, credentials } = req.body;
+    if (!Array.isArray(portIds) || portIds.length === 0) {
+      return res.status(400).json({ error: 'Укажите массив идентификаторов портов (portIds)' });
+    }
+    const result = await batchControlSwitchPorts({
+      storage,
+      switchId: req.params.id,
+      portIds,
+      action: action || 'enable',
+      profileData: profileData || {},
+      applyToHardware: applyToHardware !== undefined ? Boolean(applyToHardware) : true,
       credentials: credentials || {},
       user: req.user
     });
