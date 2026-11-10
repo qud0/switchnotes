@@ -9,6 +9,7 @@ import {
 import { api } from '../api';
 import { generateSwitchConfig } from '../utils/configGenerator';
 import { useToast } from '../context/ToastContext';
+import VlanWizardModal from './VlanWizardModal';
 
 export default function NetworkToolsView({
   vlans = [],
@@ -25,6 +26,7 @@ export default function NetworkToolsView({
   const isLight = theme === 'light';
   const toast = useToast();
   const [activeTab, setActiveTab] = useState('scanner'); // 'scanner', 'lldp', 'provision', 'ports', 'cidr', 'traceroute', 'poe'
+  const [isVlanWizardOpen, setIsVlanWizardOpen] = useState(false);
 
   // =========================================================================
   // 1. NETWORK AUTO-DISCOVERY & VENDOR DETECTION STATE
@@ -496,6 +498,7 @@ export default function NetworkToolsView({
               { id: 'troubleshoot', label: '🛠 Траблшутер (L1-L4)', icon: <Wrench className="w-3.5 h-3.5 text-amber-400" /> },
               { id: 'scanner', label: '🌐 Автодискавери (IP/Vendor)', icon: <Radio className="w-3.5 h-3.5" /> },
               { id: 'lldp', label: '🔗 LLDP Авто-топология', icon: <Link2 className="w-3.5 h-3.5" /> },
+              { id: 'vlan_wizard', label: '⚡ Сквозной VLAN (Wizard)', icon: <Layers className="w-3.5 h-3.5 text-blue-400" /> },
               { id: 'provision', label: '⚡ Конфигуратор VLAN и портов', icon: <Sliders className="w-3.5 h-3.5" /> },
               { id: 'ports', label: 'Сканер TCP портов', icon: <Zap className="w-3.5 h-3.5" /> },
               { id: 'cidr', label: 'CIDR Калькулятор', icon: <Calculator className="w-3.5 h-3.5" /> },
@@ -1205,6 +1208,51 @@ export default function NetworkToolsView({
       )}
 
       {/* ========================================================================= */}
+      {/* TAB 2.5: END-TO-END VLAN WIZARD LAUNCHER                                 */}
+      {/* ========================================================================= */}
+      {activeTab === 'vlan_wizard' && (
+        <div className="space-y-4">
+          <div className={`p-6 rounded-2xl border shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-5 ${
+            isLight ? 'bg-white border-slate-200' : 'bg-slate-900/90 border-slate-800'
+          }`}>
+            <div className="space-y-2 max-w-2xl">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" />
+                <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>Сквозной проброс VLAN по цепочке коммутаторов (End-to-End Wizard)</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono">
+                    v2.0
+                  </span>
+                </h2>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Интеллектуальный мастер автоматически находит путь между ядром сети и портом доступа, 
+                рассчитывает необходимые тегированные (Tagged / Trunk) порты на всех промежуточных коммутаторах 
+                и генерирует готовые команды для MikroTik RouterOS, SNR NAG, Cisco и Ubiquiti.
+              </p>
+              <div className="flex flex-wrap gap-2 pt-1 text-[11px] font-mono text-slate-400">
+                <span className="px-2 py-1 rounded-md bg-slate-800/80 border border-slate-700/60">✓ Автопоиск пути (BFS)</span>
+                <span className="px-2 py-1 rounded-md bg-slate-800/80 border border-slate-700/60">✓ Bridge VLAN Filtering</span>
+                <span className="px-2 py-1 rounded-md bg-slate-800/80 border border-slate-700/60">✓ SNR-OS switchport trunk</span>
+                <span className="px-2 py-1 rounded-md bg-slate-800/80 border border-slate-700/60">✓ Применение в 1 клик</span>
+              </div>
+            </div>
+
+            <div className="shrink-0 flex flex-col sm:flex-row md:flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => setIsVlanWizardOpen(true)}
+                className="h-10 px-5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-blue-500/25 transition-all"
+              >
+                <Zap className="w-4 h-4 text-white" />
+                <span>Запустить мастер проброса</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
       {/* TAB 3: BATCH PORT & VLAN PROVISIONING (MIKROTIK, SNR, UBIQUITI)          */}
       {/* ========================================================================= */}
       {activeTab === 'provision' && (
@@ -1846,6 +1894,16 @@ export default function NetworkToolsView({
           </div>
         </div>
       )}
+
+      {/* End-to-End VLAN Wizard Modal */}
+      <VlanWizardModal
+        isOpen={isVlanWizardOpen}
+        onClose={() => setIsVlanWizardOpen(false)}
+        switches={switches}
+        vlans={vlans}
+        theme={theme}
+        onReloadData={onReloadSwitches}
+      />
     </div>
   );
 }

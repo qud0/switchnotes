@@ -26,6 +26,7 @@ import { adSyncService } from './adSyncService.js';
 import { controlSwitchPort, batchControlSwitchPorts } from './portControlService.js';
 import { runSwitchCableTest } from './cableTestService.js';
 import { getSwitchPortDdm, getSwitchAllDdm } from './ddmService.js';
+import { analyzeVlanProvisioning, applyVlanProvisioning, executeVlanProvisioningSsh } from './vlanWizardService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1775,6 +1776,34 @@ app.post('/api/discovery/lldp/apply-all', requireRole('engineer'), (req, res) =>
     const { links } = req.body;
     if (!Array.isArray(links)) return res.status(400).json({ error: 'Параметр links должен быть массивом' });
     const result = applyAllLldpLinks(storage, links);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- END-TO-END VLAN WIZARD API ---
+app.post('/api/vlan-wizard/analyze', (req, res) => {
+  try {
+    const analysis = analyzeVlanProvisioning(storage, req.body || {});
+    res.json(analysis);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/vlan-wizard/apply', requireRole('engineer'), (req, res) => {
+  try {
+    const result = applyVlanProvisioning(storage, req.body || {});
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/vlan-wizard/execute-ssh', requireRole('admin'), async (req, res) => {
+  try {
+    const result = await executeVlanProvisioningSsh(storage, req.body || {});
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });

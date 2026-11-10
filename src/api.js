@@ -1039,6 +1039,46 @@ export const api = {
     return res.json();
   },
 
+  // End-to-End VLAN Wizard
+  analyzeVlanProvisioning: async (params) => {
+    const res = await fetch(`${API_BASE}/vlan-wizard/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка анализа сквозного проброса VLAN');
+    }
+    return res.json();
+  },
+
+  applyVlanProvisioning: async (params) => {
+    const res = await fetch(`${API_BASE}/vlan-wizard/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка применения сквозного проброса VLAN');
+    }
+    return res.json();
+  },
+
+  executeVlanProvisioningSsh: async (params) => {
+    const res = await fetch(`${API_BASE}/vlan-wizard/execute-ssh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка выполнения по SSH');
+    }
+    return res.json();
+  },
+
   // Backup & Restore
   exportBackupUrl: () => {
     const token = getAuthToken();

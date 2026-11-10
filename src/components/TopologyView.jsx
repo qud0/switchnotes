@@ -46,6 +46,7 @@ import { checkVlanMismatch } from '../utils/vlanMismatch';
 import { calculateSpanningTree } from '../utils/stpSimulator';
 import { api, getAuthToken } from '../api';
 import { useToast } from '../context/ToastContext';
+import VlanWizardModal from './VlanWizardModal';
 
 export function TopologyView({
   switches = [],
@@ -124,6 +125,9 @@ export function TopologyView({
   const [lldpError, setLldpError] = useState(null);
   const [applyingLinkId, setApplyingLinkId] = useState(null);
   const [isApplyingAll, setIsApplyingAll] = useState(false);
+
+  // End-to-End VLAN Wizard state
+  const [isVlanWizardOpen, setIsVlanWizardOpen] = useState(false);
 
   const handleOpenLldpModal = async () => {
     setIsLldpModalOpen(true);
@@ -1311,6 +1315,20 @@ export function TopologyView({
           >
             <Radio className="w-3.5 h-3.5 text-purple-400" />
             <span>LLDP Автолинк</span>
+          </button>
+
+          {/* End-to-End VLAN Wizard Button */}
+          <button
+            onClick={() => setIsVlanWizardOpen(true)}
+            className={`h-9 px-3 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
+              isLight
+                ? 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200'
+                : 'bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border-blue-500/30'
+            }`}
+            title="Сквозной проброс VLAN по цепочке коммутаторов (End-to-End VLAN Wizard)"
+          >
+            <Zap className="w-3.5 h-3.5 text-blue-400" />
+            <span>Сквозной VLAN</span>
           </button>
 
           {/* STP / Loop Simulator Toggle */}
@@ -3517,6 +3535,19 @@ export function TopologyView({
             </div>
           </div>
         )}
+
+        {/* End-to-End VLAN Wizard Modal */}
+        <VlanWizardModal
+          isOpen={isVlanWizardOpen}
+          onClose={() => setIsVlanWizardOpen(false)}
+          switches={switches}
+          vlans={vlans}
+          theme={theme}
+          onReloadData={onReloadData}
+          initialSourceSwitchId={pathFindStart}
+          initialDestinationSwitchId={pathFindEnd}
+          initialVlanId={traceVlanId}
+        />
       </div>
     </div>
   );
