@@ -1738,10 +1738,19 @@ app.post('/api/discovery/add-switch', requireRole('engineer'), (req, res) => {
   }
 });
 
-// 3. LLDP / CDP neighbor discovery
+// 3. LLDP / CDP neighbor discovery (GET & POST)
 app.get('/api/discovery/lldp', async (req, res) => {
   try {
     const topology = await discoverLldpTopology(storage, req.query);
+    res.json(topology);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/discovery/lldp', async (req, res) => {
+  try {
+    const topology = await discoverLldpTopology(storage, req.body || {});
     res.json(topology);
   } catch (err) {
     res.status(500).json({ error: err.message });

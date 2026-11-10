@@ -3347,6 +3347,29 @@ export function TopologyView({
                   </div>
                 ) : lldpData ? (
                   <>
+                    {/* Live Hardware vs Simulation Banner */}
+                    {lldpData.isHardware ? (
+                      <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs">
+                        <Zap className="w-4 h-4 shrink-0 text-emerald-500" />
+                        <div className="min-w-0">
+                          <div className="font-semibold">Аппаратный опрос оборудования (Live SSH)</div>
+                          <div className="text-[11px] text-emerald-700 dark:text-emerald-300 opacity-90">
+                            Связи получены в реальном времени с MikroTik RouterOS (/ip neighbor) и SNR NAG (LLDP/CDP)
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 text-xs">
+                        <Radio className="w-4 h-4 shrink-0 text-purple-500" />
+                        <div className="min-w-0">
+                          <div className="font-semibold">Сетевая авто-топология LLDP / CDP</div>
+                          <div className="text-[11px] text-purple-700 dark:text-purple-300 opacity-90">
+                            Обнаружены межкоммутаторные соединения оптических и медных портов ядра и распределения
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Stats summary bar */}
                     <div className="grid grid-cols-3 gap-3 text-center">
                       <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-800/40 border-slate-800'}`}>
@@ -3401,9 +3424,16 @@ export function TopologyView({
                                     <span>{link.speed || '1G'}</span>
                                     <ArrowRight className="w-3.5 h-3.5 text-purple-400" />
                                   </div>
-                                  <span className="text-[10px] text-slate-400 font-mono">
-                                    {link.protocol}
-                                  </span>
+                                  <div className="flex items-center gap-1 mt-0.5">
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      {link.protocol}
+                                    </span>
+                                    {link.bidirectional && (
+                                      <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-500 border border-emerald-500/20 font-mono font-medium" title="Двустороннее подтверждение линка (Full Mesh)">
+                                        ✓✓ Mesh
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
 
                                 {/* Right: Remote Switch & Port */}

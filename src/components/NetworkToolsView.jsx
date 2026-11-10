@@ -1111,6 +1111,12 @@ export default function NetworkToolsView({
           {/* List of Discovered Inter-Switch Links */}
           {lldpResults && (
             <div className="space-y-3">
+              {lldpResults.isHardware && (
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Аппаратный опрос (Live SSH): связи получены по LLDP/CDP с реальных MikroTik и SNR</span>
+                </div>
+              )}
               <div className="flex items-center justify-between text-xs text-slate-400 px-1">
                 <span>Обнаружено связей: <strong className="text-white">{lldpResults.totalDiscovered}</strong></span>
                 <span>Уже соединены в топологии: <strong className="text-emerald-400">{lldpResults.alreadyConnectedCount}</strong></span>
@@ -1144,8 +1150,11 @@ export default function NetworkToolsView({
 
                       {/* Middle Link Badge */}
                       <div className="flex flex-col items-center justify-center px-4">
-                        <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-semibold mb-1">
-                          {link.protocol} • {link.speed}
+                        <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-semibold mb-1 flex items-center gap-1">
+                          <span>{link.protocol} • {link.speed}</span>
+                          {link.bidirectional && (
+                            <span className="text-[9px] text-emerald-400 font-bold ml-1">✓✓ Mesh</span>
+                          )}
                         </span>
                         <div className="flex items-center gap-2 text-slate-500">
                           <span className="w-6 h-0.5 bg-slate-700" />

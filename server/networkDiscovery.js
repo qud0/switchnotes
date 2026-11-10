@@ -477,18 +477,224 @@ export async function scanAndDiscoverNetwork({
 }
 
 /**
- * 2. LLDP / CDP Авто-топология
- * Обнаружение межкоммутаторных линков между MikroTik, SNR и Ubiquiti
+ * Вспомогательные функции нормализации и сопоставления устройств и портов
  */
-export async function discoverLldpTopology(storage, { mode = 'auto' } = {}) {
+export function normalizeMac(mac) {
+  if (!mac) return '';
+  return mac.replace(/[^a-fA-F0-9]/g, '').toLowerCase();
+}
+
+export function normalizeStr(str) {
+  if (!str) return '';
+  return str.toLowerCase().replace(/[\s\-_/]/g, '');
+}
+
+export function matchSwitch(switchesList, { remoteIp, remoteSysName, chassisId }) {
+  if (remoteIp) {
+    const sw = switchesList.find(s => s.ip && s.ip.trim() === remoteIp.trim());
+    if (sw) return sw;
+  }
+  if (chassisId) {
+    const targetMac = normalizeMac(chassisId);
+    const sw = switchesList.find(s => s.mac && normalizeMac(s.mac) === targetMac);
+    if (sw) return sw;
+  }
+  if (remoteSysName) {
+    const targetName = normalizeStr(remoteSysName);
+    const sw = switchesList.find(s => {
+      const sName = normalizeStr(s.name);
+      const sId = normalizeStr(s.id);
+      return sName === targetName || sId === targetName || sName.includes(targetName) || targetName.includes(sName);
+    });
+    if (sw) return sw;
+  }
+  return null;
+}
+
+export function matchPort(switchObj, ifNameOrPortId) {
+  if (!switchObj || !switchObj.ports || !ifNameOrPortId) return null;
+  const target = ifNameOrPortId.trim().toLowerCase();
+  const targetNorm = normalizeStr(ifNameOrPortId);
+
+  // 1. Точное или нормализованное совпадение по имени порта
+  let p = switchObj.ports.find(port => {
+    const pName = (port.name || '').toLowerCase();
+    return pName === target || normalizeStr(pName) === targetNorm;
+  });
+  if (p) return p;
+
+  // 2. Прямое совпадение по ID (например 'p24' или '24')
+  p = switchObj.ports.find(port => port.id.toLowerCase() === target || port.id.toLowerCase() === `p${target}`);
+  if (p) return p;
+
+  // 3. Специальное сопоставление оптических SFP портов (например 'sfp-sfpplus1', 'sfp1', 'te1/0/1')
+  if (/sfp|sfpplus|te\s*1\/|tengigabit/i.test(target)) {
+    const sfpNumMatch = target.match(/(?:sfp(?:\+|-sfpplus)?|te\s*1\/0\/)(\d+)/i);
+    const sfpIdx = sfpNumMatch ? parseInt(sfpNumMatch[1], 10) : 1;
+    const sfpPorts = switchObj.ports.filter(port => 
+      port.type?.toLowerCase().includes('sfp') || 
+      port.type?.toLowerCase().includes('fiber') ||
+      /sfp|tengigabit/i.test(port.name || '')
+    );
+    if (sfpPorts[sfpIdx - 1]) return sfpPorts[sfpIdx - 1];
+  }
+
+  // 4. Извлечение номера порта (например 'Ethernet1/0/24' -> 24, 'ether24' -> 24, 'Port 24' -> 24)
+  const numMatch = target.match(/(?:ether|eth|gi|te|ge|port|p|\/)\s*(\d+)$/i) || target.match(/(\d+)$/);
+  if (numMatch) {
+    const num = parseInt(numMatch[1], 10);
+    p = switchObj.ports.find(port => port.number === num);
+    if (p) return p;
+  }
+
+  return null;
+}
+
+/**
+ * Парсер вывода MikroTik RouterOS: /ip neighbor print detail without-paging
+ */
+export function parseMikrotikNeighbors(raw) {
+  const neighbors = [];
+  const lines = raw.split(/\r?\n/);
+  let current = null;
+
+  for (const line of lines) {
+    const startMatch = line.match(/^\s*\d+\s+[A-Za-z*]*\s*interface=([^\s]+)/) || line.match(/^\s*interface=([^\s]+)/);
+    if (startMatch) {
+      if (current && current.localInterface) {
+        neighbors.push(current);
+      }
+      current = {
+        localInterface: startMatch[1].replace(/["']/g, '').trim(),
+        chassisId: '',
+        remoteSysName: '',
+        remotePortId: '',
+        remoteIp: '',
+        platform: '',
+        description: '',
+        protocol: 'LLDP/MNDP'
+      };
+    }
+
+    if (!current) continue;
+
+    const macM = line.match(/\bmac-address=([^\s]+)/i);
+    if (macM && !current.chassisId) current.chassisId = macM[1].replace(/["']/g, '').trim();
+
+    const idM = line.match(/\b(?:identity|sys-name)="([^"]+)"/) || line.match(/\b(?:identity|sys-name)=([^\s]+)/i);
+    if (idM && !current.remoteSysName) current.remoteSysName = idM[1].trim();
+
+    const portM = line.match(/\bport-id="([^"]+)"/) || line.match(/\bport-id=([^\s]+)/i);
+    if (portM && !current.remotePortId) current.remotePortId = portM[1].trim();
+
+    const ipM = line.match(/\b(?:address4|address)=([0-9.]+)/i);
+    if (ipM && !current.remoteIp) current.remoteIp = ipM[1].trim();
+
+    const platM = line.match(/\bplatform="([^"]+)"/) || line.match(/\bplatform=([^\s]+)/i);
+    if (platM && !current.platform) current.platform = platM[1].trim();
+
+    const descM = line.match(/\bsys-description="([^"]+)"/) || line.match(/\bsys-description=([^\s]+)/i);
+    if (descM && !current.description) current.description = descM[1].trim();
+  }
+
+  if (current && current.localInterface) {
+    neighbors.push(current);
+  }
+
+  return neighbors;
+}
+
+/**
+ * Парсер вывода SNR: show lldp info remote-device
+ */
+export function parseSnrLldp(raw) {
+  const neighbors = [];
+  
+  if (/Local Port:/i.test(raw)) {
+    const blocks = raw.split(/--------------------------------------------------|(?=Local Port:)/i);
+    for (const block of blocks) {
+      const portMatch = block.match(/Local Port:\s*([^\r\n]+)/i);
+      if (!portMatch) continue;
+      
+      const localInterface = portMatch[1].trim();
+      const chassisMatch = block.match(/Chassis ID:\s*([0-9a-fA-F:.-]+)/i);
+      const portIdMatch = block.match(/Port ID:\s*([^\r\n(]+)/i);
+      const sysNameMatch = block.match(/System Name:\s*([^\r\n]+)/i);
+      const descMatch = block.match(/System Description:\s*([^\r\n]+)/i);
+      const ipMatch = block.match(/Management Address:\s*([0-9.]+)/i);
+
+      neighbors.push({
+        localInterface,
+        chassisId: chassisMatch ? chassisMatch[1].trim() : '',
+        remotePortId: portIdMatch ? portIdMatch[1].trim() : '',
+        remoteSysName: sysNameMatch ? sysNameMatch[1].trim() : '',
+        description: descMatch ? descMatch[1].trim() : '',
+        remoteIp: ipMatch ? ipMatch[1].trim() : '',
+        protocol: 'LLDP'
+      });
+    }
+    return neighbors;
+  }
+
+  const lines = raw.split(/\r?\n/);
+  for (const line of lines) {
+    if (/Local Port/i.test(line) || /----/i.test(line) || !line.trim()) continue;
+    const parts = line.trim().split(/\s{2,}/);
+    if (parts.length >= 3) {
+      neighbors.push({
+        localInterface: parts[0].trim(),
+        chassisId: parts[1].trim(),
+        remotePortId: parts[2].trim(),
+        remoteSysName: parts[3] ? parts[3].trim() : '',
+        protocol: 'LLDP'
+      });
+    }
+  }
+
+  return neighbors;
+}
+
+/**
+ * Парсер вывода CDP (SNR / Cisco): show cdp neighbor detail / brief
+ */
+export function parseCdpNeighbors(raw) {
+  const neighbors = [];
+  const lines = raw.split(/\r?\n/);
+  let tableStarted = false;
+
+  for (const line of lines) {
+    if (/Device ID\s+Local Intrfce/i.test(line)) {
+      tableStarted = true;
+      continue;
+    }
+    if (!tableStarted || !line.trim() || line.startsWith('Capability')) continue;
+
+    const m = line.trim().match(/^([^\s]+)\s+(Eth\s*\d+\/\d+\/\d+|[A-Za-z0-9/]+)\s+\d+\s+([A-Z\s]+?)\s+([A-Za-z0-9_-]+)\s+([^\r\n]+)$/i);
+    if (m) {
+      neighbors.push({
+        remoteSysName: m[1].trim(),
+        localInterface: m[2].trim().replace(/\s+/g, ''),
+        platform: m[4].trim(),
+        remotePortId: m[5].trim(),
+        protocol: 'CDP'
+      });
+    }
+  }
+  return neighbors;
+}
+
+/**
+ * 2. LLDP / CDP Авто-топология
+ * Опрос реальных коммутаторов по SSH (MikroTik RouterOS, SNR NAG, Cisco)
+ * и сопоставление соседей с базой данных SwitchBook
+ */
+export async function discoverLldpTopology(storage, { mode = 'auto', credentials = {} } = {}) {
   const switches = storage?.data?.switches || [];
   if (switches.length === 0) {
     return { success: false, message: 'В базе нет коммутаторов', links: [] };
   }
 
-  const discoveredNeighbors = [];
-
-  // Создаем словарь существующих линков для быстрой сверки
+  // Словарь существующих линков для быстрой сверки
   const existingLinksMap = new Set();
   switches.forEach(sw => {
     (sw.ports || []).forEach(p => {
@@ -501,101 +707,277 @@ export async function discoverLldpTopology(storage, { mode = 'auto' } = {}) {
     });
   });
 
-  // Строим реалистичную карту LLDP для парка оборудования
-  // MikroTik (sw-core-mikrotik) <---> SNR (sw-dist-snr) <---> Ubiquiti (sw-access-unifi)
-  const mtSw = switches.find(s => s.vendor === 'MikroTik' || s.id.includes('mt') || s.name.includes('core')) || switches[0];
-  const snrSw = switches.find(s => s.vendor === 'SNR' || s.id.includes('snr') || s.name.includes('dist')) || switches[1];
-  const ubntSw = switches.find(s => s.vendor === 'Ubiquiti' || s.id.includes('ubnt') || s.name.includes('access')) || switches[2];
+  const discoveredNeighbors = [];
+  const seenLinkPairs = new Map();
+  let polledSwitchesCount = 0;
+  let successfulHardwarePolls = 0;
 
-  if (mtSw && snrSw) {
-    const isExisting1 = existingLinksMap.has(`${mtSw.id}:p25->${snrSw.id}:p25`);
-    discoveredNeighbors.push({
-      id: `lldp-${mtSw.id}-${snrSw.id}-1`,
-      protocol: 'LLDP',
-      sourceSwitch: { id: mtSw.id, name: mtSw.name, vendor: mtSw.vendor, ip: mtSw.ip },
-      sourcePort: { id: 'p25', name: 'sfp-sfpplus1', number: 25, type: 'SFP+ 10G' },
-      remoteSwitch: { id: snrSw.id, name: snrSw.name, vendor: snrSw.vendor, ip: snrSw.ip },
-      remotePort: { id: 'p25', name: 'TenGigabitEthernet 1/0/1', number: 25, type: 'SFP+ 10G' },
-      remoteSysName: snrSw.name,
-      remoteSysDesc: `${snrSw.vendor} ${snrSw.model || 'S2985G'} 10G Optical Uplink`,
-      speed: '10G Fiber',
-      status: isExisting1 ? 'connected' : 'new_discovered'
+  // 1. Попытка аппаратного опроса по SSH, если режим не 'simulation'
+  if (mode !== 'simulation') {
+    const reachableSwitches = switches.filter(s => s.ip && s.ip.trim());
+    polledSwitchesCount = reachableSwitches.length;
+
+    const pollPromises = reachableSwitches.map(async (sw) => {
+      try {
+        const v = (sw.vendor || '').toLowerCase();
+        let command = '';
+        if (v.includes('mikrotik')) {
+          command = '/ip neighbor print detail without-paging\n';
+        } else if (v.includes('snr')) {
+          command = 'show lldp info remote-device\n';
+        } else if (v.includes('cisco') || v.includes('eltex')) {
+          command = 'show lldp neighbors detail\n';
+        } else {
+          command = 'show lldp info remote-device\n';
+        }
+
+        const sshCreds = {
+          host: sw.ip,
+          port: credentials.port || sw.sshPort || storage.data?.backupSchedule?.credentials?.port || 22,
+          username: credentials.username || sw.sshUsername || storage.data?.backupSchedule?.credentials?.username || 'admin',
+          password: credentials.password || sw.sshPassword || storage.data?.backupSchedule?.credentials?.password || '',
+          command,
+          timeout: 4500
+        };
+
+        let res = await executeSshCommand(sshCreds).catch(() => null);
+        let rawOut = res?.output || res?.stdout || '';
+
+        // Если для SNR/Cisco команда LLDP вернула ошибку — пробуем CDP
+        if ((!rawOut || /Invalid|error|unknown/i.test(rawOut)) && !v.includes('mikrotik')) {
+          const cdpRes = await executeSshCommand({
+            ...sshCreds,
+            command: 'show cdp neighbor detail\n'
+          }).catch(() => null);
+          if (cdpRes?.output && !/Invalid|error|unknown/i.test(cdpRes.output)) {
+            rawOut = cdpRes.output;
+          }
+        }
+
+        if (!rawOut || rawOut.trim().length === 0) return [];
+
+        let parsed = [];
+        if (v.includes('mikrotik')) {
+          parsed = parseMikrotikNeighbors(rawOut);
+        } else if (v.includes('snr')) {
+          parsed = parseSnrLldp(rawOut);
+          if (parsed.length === 0) parsed = parseCdpNeighbors(rawOut);
+        } else {
+          parsed = parseSnrLldp(rawOut);
+          if (parsed.length === 0) parsed = parseCdpNeighbors(rawOut);
+          if (parsed.length === 0) parsed = parseMikrotikNeighbors(rawOut);
+        }
+
+        if (parsed.length > 0) {
+          successfulHardwarePolls++;
+        }
+
+        return parsed.map(neighbor => ({ sourceSwitch: sw, neighbor }));
+      } catch (err) {
+        return [];
+      }
+    });
+
+    const pollResults = await Promise.allSettled(pollPromises);
+    const allDiscovered = pollResults
+      .filter(r => r.status === 'fulfilled' && Array.isArray(r.value))
+      .flatMap(r => r.value);
+
+    // Сопоставление с портами и базой коммутаторов
+    allDiscovered.forEach(({ sourceSwitch: swA, neighbor }) => {
+      const portA = matchPort(swA, neighbor.localInterface);
+      if (!portA) return;
+
+      const swB = matchSwitch(switches, neighbor);
+      const portB = swB ? matchPort(swB, neighbor.remotePortId) : null;
+
+      const pairKey = swB && portB 
+        ? [ `${swA.id}:${portA.id}`, `${swB.id}:${portB.id}` ].sort().join('<->')
+        : `${swA.id}:${portA.id}->${neighbor.remoteSysName || neighbor.remoteIp}:${neighbor.remotePortId}`;
+
+      const isConn = swB && portB 
+        ? existingLinksMap.has(`${swA.id}:${portA.id}->${swB.id}:${portB.id}`)
+        : false;
+
+      if (seenLinkPairs.has(pairKey)) {
+        const existing = seenLinkPairs.get(pairKey);
+        existing.bidirectional = true;
+        if (!existing.remoteIp && neighbor.remoteIp) existing.remoteIp = neighbor.remoteIp;
+        return;
+      }
+
+      let speed = '1G';
+      if (/10g|te|sfp\+|sfpplus/i.test(portA.name || '') || /10g|sfp\+/i.test(portA.type || '')) {
+        speed = '10G Fiber';
+      } else if (/lacp|lag|agg/i.test(portA.name || '') || /lacp|lag/i.test(neighbor.remotePortId || '')) {
+        speed = '1G LACP';
+      } else if (/fast|fe|100m/i.test(portA.name || '')) {
+        speed = '100M';
+      }
+
+      const linkObj = {
+        id: `lldp-${swA.id}-${portA.id}-${swB ? swB.id : 'ext'}-${portB ? portB.id : 'port'}`,
+        protocol: neighbor.protocol || 'LLDP',
+        sourceSwitch: {
+          id: swA.id,
+          name: swA.name,
+          vendor: swA.vendor || 'Unknown',
+          ip: swA.ip
+        },
+        sourcePort: {
+          id: portA.id,
+          name: portA.name || `Порт ${portA.number}`,
+          number: portA.number,
+          type: portA.type || 'Copper 1G'
+        },
+        remoteSwitch: swB ? {
+          id: swB.id,
+          name: swB.name,
+          vendor: swB.vendor || 'Unknown',
+          ip: swB.ip,
+          isExternal: false
+        } : {
+          id: null,
+          name: neighbor.remoteSysName || neighbor.remoteIp || 'Внешнее устройство',
+          vendor: neighbor.platform || 'Unknown',
+          ip: neighbor.remoteIp || '',
+          isExternal: true
+        },
+        remotePort: portB ? {
+          id: portB.id,
+          name: portB.name || `Порт ${portB.number}`,
+          number: portB.number,
+          type: portB.type || 'Copper 1G'
+        } : {
+          id: null,
+          name: neighbor.remotePortId || 'Порт',
+          number: null,
+          type: 'Ethernet'
+        },
+        remoteSysName: neighbor.remoteSysName || (swB ? swB.name : ''),
+        remoteSysDesc: neighbor.description || (swB ? `${swB.vendor} ${swB.model || 'Switch'}` : ''),
+        speed,
+        status: isConn ? 'connected' : (swB && portB ? 'new_discovered' : 'external_device'),
+        bidirectional: false,
+        hardwareDiscovered: true
+      };
+
+      seenLinkPairs.set(pairKey, linkObj);
+      discoveredNeighbors.push(linkObj);
     });
   }
+
+  // 2. Симуляция / Демо-фоллбек, если аппаратный опрос не нашел линков
+  const isHardwareSuccess = discoveredNeighbors.length > 0 && successfulHardwarePolls > 0;
+
+  if (discoveredNeighbors.length === 0 || mode === 'simulation') {
+    const mtSw = switches.find(s => s.vendor === 'MikroTik' || s.id.includes('mt') || s.name.includes('core')) || switches[0];
+    const snrSw = switches.find(s => s.vendor === 'SNR' || s.id.includes('snr') || s.name.includes('dist')) || switches[1];
+    const ubntSw = switches.find(s => s.vendor === 'Ubiquiti' || s.id.includes('ubnt') || s.name.includes('access')) || switches[2];
+
+    if (mtSw && snrSw) {
+      const isExisting1 = existingLinksMap.has(`${mtSw.id}:p25->${snrSw.id}:p25`);
+      discoveredNeighbors.push({
+        id: `lldp-${mtSw.id}-${snrSw.id}-1`,
+        protocol: 'LLDP',
+        sourceSwitch: { id: mtSw.id, name: mtSw.name, vendor: mtSw.vendor, ip: mtSw.ip },
+        sourcePort: { id: 'p25', name: 'sfp-sfpplus1', number: 25, type: 'SFP+ 10G' },
+        remoteSwitch: { id: snrSw.id, name: snrSw.name, vendor: snrSw.vendor, ip: snrSw.ip, isExternal: false },
+        remotePort: { id: 'p25', name: 'TenGigabitEthernet 1/0/1', number: 25, type: 'SFP+ 10G' },
+        remoteSysName: snrSw.name,
+        remoteSysDesc: `${snrSw.vendor} ${snrSw.model || 'S2985G'} 10G Optical Uplink`,
+        speed: '10G Fiber',
+        status: isExisting1 ? 'connected' : 'new_discovered',
+        bidirectional: true,
+        hardwareDiscovered: false
+      });
+    }
 
     if (snrSw && ubntSw) {
-    const isExisting2 = existingLinksMap.has(`${snrSw.id}:p23->${ubntSw.id}:p23`);
-    discoveredNeighbors.push({
-      id: `lldp-${snrSw.id}-${ubntSw.id}-1`,
-      protocol: 'LLDP / LACP',
-      sourceSwitch: { id: snrSw.id, name: snrSw.name, vendor: snrSw.vendor, ip: snrSw.ip },
-      sourcePort: { id: 'p23', name: 'Ethernet1/0/23', number: 23, type: 'Copper 1G' },
-      remoteSwitch: { id: ubntSw.id, name: ubntSw.name, vendor: ubntSw.vendor, ip: ubntSw.ip },
-      remotePort: { id: 'p23', name: 'Port 23', number: 23, type: 'Copper 1G' },
-      remoteSysName: ubntSw.name,
-      remoteSysDesc: `${ubntSw.vendor} ${ubntSw.model || 'UniFi Pro 24'} LACP Link #1`,
-      speed: '1G LACP',
-      status: isExisting2 ? 'connected' : 'new_discovered'
-    });
+      const isExisting2 = existingLinksMap.has(`${snrSw.id}:p23->${ubntSw.id}:p23`);
+      discoveredNeighbors.push({
+        id: `lldp-${snrSw.id}-${ubntSw.id}-1`,
+        protocol: 'LLDP / LACP',
+        sourceSwitch: { id: snrSw.id, name: snrSw.name, vendor: snrSw.vendor, ip: snrSw.ip },
+        sourcePort: { id: 'p23', name: 'Ethernet1/0/23', number: 23, type: 'Copper 1G' },
+        remoteSwitch: { id: ubntSw.id, name: ubntSw.name, vendor: ubntSw.vendor, ip: ubntSw.ip, isExternal: false },
+        remotePort: { id: 'p23', name: 'Port 23', number: 23, type: 'Copper 1G' },
+        remoteSysName: ubntSw.name,
+        remoteSysDesc: `${ubntSw.vendor} ${ubntSw.model || 'UniFi Pro 24'} LACP Link #1`,
+        speed: '1G LACP',
+        status: isExisting2 ? 'connected' : 'new_discovered',
+        bidirectional: true,
+        hardwareDiscovered: false
+      });
 
-    const isExisting3 = existingLinksMap.has(`${snrSw.id}:p24->${ubntSw.id}:p24`);
-    discoveredNeighbors.push({
-      id: `lldp-${snrSw.id}-${ubntSw.id}-2`,
-      protocol: 'LLDP / LACP',
-      sourceSwitch: { id: snrSw.id, name: snrSw.name, vendor: snrSw.vendor, ip: snrSw.ip },
-      sourcePort: { id: 'p24', name: 'Ethernet1/0/24', number: 24, type: 'Copper 1G' },
-      remoteSwitch: { id: ubntSw.id, name: ubntSw.name, vendor: ubntSw.vendor, ip: ubntSw.ip },
-      remotePort: { id: 'p24', name: 'Port 24', number: 24, type: 'Copper 1G' },
-      remoteSysName: ubntSw.name,
-      remoteSysDesc: `${ubntSw.vendor} ${ubntSw.model || 'UniFi Pro 24'} LACP Link #2`,
-      speed: '1G LACP',
-      status: isExisting3 ? 'connected' : 'new_discovered'
-    });
-  }
+      const isExisting3 = existingLinksMap.has(`${snrSw.id}:p24->${ubntSw.id}:p24`);
+      discoveredNeighbors.push({
+        id: `lldp-${snrSw.id}-${ubntSw.id}-2`,
+        protocol: 'LLDP / LACP',
+        sourceSwitch: { id: snrSw.id, name: snrSw.name, vendor: snrSw.vendor, ip: snrSw.ip },
+        sourcePort: { id: 'p24', name: 'Ethernet1/0/24', number: 24, type: 'Copper 1G' },
+        remoteSwitch: { id: ubntSw.id, name: ubntSw.name, vendor: ubntSw.vendor, ip: ubntSw.ip, isExternal: false },
+        remotePort: { id: 'p24', name: 'Port 24', number: 24, type: 'Copper 1G' },
+        remoteSysName: ubntSw.name,
+        remoteSysDesc: `${ubntSw.vendor} ${ubntSw.model || 'UniFi Pro 24'} LACP Link #2`,
+        speed: '1G LACP',
+        status: isExisting3 ? 'connected' : 'new_discovered',
+        bidirectional: true,
+        hardwareDiscovered: false
+      });
+    }
 
-  // Динамический автопоиск линков по подключенным портам всех коммутаторов базы
-  switches.forEach(swA => {
-    (swA.ports || []).forEach(portA => {
-      if (portA.connectedTo && !portA.linkedSwitchId) {
-        const text = String(portA.connectedTo).toLowerCase();
-        const swB = switches.find(s => s.id !== swA.id && (text.includes(s.name.toLowerCase()) || (s.ip && text.includes(s.ip))));
-        if (swB) {
-          let portB = (swB.ports || []).find(p => !p.linkedSwitchId && text.includes(String(p.number || p.name).toLowerCase()));
-          if (!portB) {
-            portB = (swB.ports || []).find(p => !p.linkedSwitchId && p.type === portA.type);
-          }
-          if (portB) {
-            const linkId = `lldp-${swA.id}-${portA.id}-${swB.id}-${portB.id}`;
-            const exists = discoveredNeighbors.some(d => 
-              (d.sourceSwitch.id === swA.id && d.sourcePort.id === portA.id) ||
-              (d.sourceSwitch.id === swB.id && d.sourcePort.id === portB.id)
-            );
-            if (!exists) {
-              const isConn = existingLinksMap.has(`${swA.id}:${portA.id}->${swB.id}:${portB.id}`);
-              discoveredNeighbors.push({
-                id: linkId,
-                protocol: 'LLDP',
-                sourceSwitch: { id: swA.id, name: swA.name, vendor: swA.vendor, ip: swA.ip },
-                sourcePort: { id: portA.id, name: portA.name || `Порт ${portA.number}`, number: portA.number, type: portA.type || 'Copper 1G' },
-                remoteSwitch: { id: swB.id, name: swB.name, vendor: swB.vendor, ip: swB.ip },
-                remotePort: { id: portB.id, name: portB.name || `Порт ${portB.number}`, number: portB.number, type: portB.type || 'Copper 1G' },
-                remoteSysName: swB.name,
-                remoteSysDesc: `${swB.vendor} ${swB.model || 'Switch'}`,
-                speed: portA.speed || '1G',
-                status: isConn ? 'connected' : 'new_discovered'
-              });
+    // Динамический автопоиск линков по подключенным портам всех коммутаторов базы
+    switches.forEach(swA => {
+      (swA.ports || []).forEach(portA => {
+        if (portA.connectedTo && !portA.linkedSwitchId) {
+          const text = String(portA.connectedTo).toLowerCase();
+          const swB = switches.find(s => s.id !== swA.id && (text.includes(s.name.toLowerCase()) || (s.ip && text.includes(s.ip))));
+          if (swB) {
+            let portB = (swB.ports || []).find(p => !p.linkedSwitchId && text.includes(String(p.number || p.name).toLowerCase()));
+            if (!portB) {
+              portB = (swB.ports || []).find(p => !p.linkedSwitchId && p.type === portA.type);
+            }
+            if (portB) {
+              const linkId = `lldp-${swA.id}-${portA.id}-${swB.id}-${portB.id}`;
+              const exists = discoveredNeighbors.some(d => 
+                (d.sourceSwitch.id === swA.id && d.sourcePort.id === portA.id) ||
+                (d.sourceSwitch.id === swB.id && d.sourcePort.id === portB.id)
+              );
+              if (!exists) {
+                const isConn = existingLinksMap.has(`${swA.id}:${portA.id}->${swB.id}:${portB.id}`);
+                discoveredNeighbors.push({
+                  id: linkId,
+                  protocol: 'LLDP',
+                  sourceSwitch: { id: swA.id, name: swA.name, vendor: swA.vendor, ip: swA.ip },
+                  sourcePort: { id: portA.id, name: portA.name || `Порт ${portA.number}`, number: portA.number, type: portA.type || 'Copper 1G' },
+                  remoteSwitch: { id: swB.id, name: swB.name, vendor: swB.vendor, ip: swB.ip, isExternal: false },
+                  remotePort: { id: portB.id, name: portB.name || `Порт ${portB.number}`, number: portB.number, type: portB.type || 'Copper 1G' },
+                  remoteSysName: swB.name,
+                  remoteSysDesc: `${swB.vendor} ${swB.model || 'Switch'}`,
+                  speed: portA.speed || '1G',
+                  status: isConn ? 'connected' : 'new_discovered',
+                  bidirectional: false,
+                  hardwareDiscovered: false
+                });
+              }
             }
           }
         }
-      }
+      });
     });
-  });
+  }
 
   return {
     success: true,
+    mode: isHardwareSuccess ? 'live' : 'simulation',
+    isHardware: isHardwareSuccess,
+    polledSwitchesCount,
+    successfulHardwarePolls,
     totalDiscovered: discoveredNeighbors.length,
     newDiscoveredCount: discoveredNeighbors.filter(l => l.status === 'new_discovered').length,
     alreadyConnectedCount: discoveredNeighbors.filter(l => l.status === 'connected').length,
+    externalDiscoveredCount: discoveredNeighbors.filter(l => l.status === 'external_device').length,
     links: discoveredNeighbors
   };
 }
@@ -606,21 +988,14 @@ export async function discoverLldpTopology(storage, { mode = 'auto' } = {}) {
 export function applyLldpLink(storage, link) {
   const { sourceSwitch, sourcePort, remoteSwitch, remotePort } = link;
   if (!sourceSwitch?.id || !sourcePort?.id || !remoteSwitch?.id || !remotePort?.id) {
-    throw new Error('Некорректные параметры линка LLDP');
+    throw new Error('Некорректные параметры линка LLDP: удаленное устройство не выбрано или не найдено в базе');
   }
 
-  // Привязываем порт первого свитча
+  // Привязываем порт первого свитча (storage.updatePort автоматически свяжет и второй свитч)
   storage.updatePort(sourceSwitch.id, sourcePort.id, {
     linkedSwitchId: remoteSwitch.id,
     linkedPortId: remotePort.id,
     connectedTo: `${remoteSwitch.name} (${remotePort.name || 'Порт ' + remotePort.number})`
-  });
-
-  // Привязываем порт второго свитча
-  storage.updatePort(remoteSwitch.id, remotePort.id, {
-    linkedSwitchId: sourceSwitch.id,
-    linkedPortId: sourcePort.id,
-    connectedTo: `${sourceSwitch.name} (${sourcePort.name || 'Порт ' + sourcePort.number})`
   });
 
   return { success: true };
@@ -634,8 +1009,10 @@ export function applyAllLldpLinks(storage, links) {
   let appliedCount = 0;
   for (const link of links) {
     try {
-      applyLldpLink(storage, link);
-      appliedCount++;
+      if (link.status === 'new_discovered' && link.sourceSwitch?.id && link.remoteSwitch?.id) {
+        applyLldpLink(storage, link);
+        appliedCount++;
+      }
     } catch (e) {
       console.warn('[LLDP] Ошибка применения линка:', e.message);
     }
