@@ -42,6 +42,7 @@ const NetworkAuditModal = lazy(() => import('./components/NetworkAuditModal').th
 const DeviceTraceModal = lazy(() => import('./components/DeviceTraceModal'));
 const MacDiscoveryModal = lazy(() => import('./components/MacDiscoveryModal'));
 const WebSshModal = lazy(() => import('./components/WebSshModal'));
+const WebSerialModal = lazy(() => import('./components/WebSerialModal'));
 const TroubleshooterModal = lazy(() => import('./components/TroubleshooterModal'));
 const ActiveDirectoryModal = lazy(() => import('./components/ActiveDirectoryModal').then(m => ({ default: m.ActiveDirectoryModal })));
 const PoeBudgetModal = lazy(() => import('./components/PoeBudgetModal').then(m => ({ default: m.PoeBudgetModal })));
@@ -147,6 +148,10 @@ export default function App() {
   // Live Web-SSH Modal state
   const [isWebSshOpen, setIsWebSshOpen] = useState(false);
   const [webSshSwitch, setWebSshSwitch] = useState(null);
+
+  // Live WebSerial Console Modal state
+  const [isWebSerialOpen, setIsWebSerialOpen] = useState(false);
+  const [webSerialSwitch, setWebSerialSwitch] = useState(null);
 
   // Intelligent Troubleshooter Modal state
   const [isTroubleshootOpen, setIsTroubleshootOpen] = useState(false);
@@ -900,6 +905,10 @@ export default function App() {
         }}
         onOpenDiscoveryModal={() => setIsDiscoveryModalOpen(true)}
         onOpenConfigTemplatesModal={() => setIsConfigTemplatesModalOpen(true)}
+        onOpenWebSerial={(sw) => {
+          setWebSerialSwitch(sw || null);
+          setIsWebSerialOpen(true);
+        }}
         unreadAlertsCount={unreadAlertsCount}
         auditIssuesCount={auditSummary.counts.total}
         auditHealthScore={auditSummary.healthScore}
@@ -1094,6 +1103,10 @@ export default function App() {
               setIsTroubleshootOpen(true);
             }}
             onOpenAudit={() => setIsAuditModalOpen(true)}
+            onOpenWebSerial={(sw) => {
+              setWebSerialSwitch(sw || null);
+              setIsWebSerialOpen(true);
+            }}
             theme={theme}
           />
         ) : currentView === 'notes' ? (
@@ -1551,6 +1564,15 @@ export default function App() {
         isOpen={isWebSshOpen}
         onClose={() => setIsWebSshOpen(false)}
         switchData={webSshSwitch}
+        theme={theme}
+      />
+
+      {/* Zero-Touch WebSerial (USB/COM) Console Modal */}
+      <WebSerialModal
+        isOpen={isWebSerialOpen}
+        onClose={() => setIsWebSerialOpen(false)}
+        initialSwitch={webSerialSwitch}
+        switches={switches}
         theme={theme}
       />
 

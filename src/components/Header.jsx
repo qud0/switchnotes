@@ -59,6 +59,7 @@ export function Header({
   onOpenPoeModal,
   onOpenDiscoveryModal,
   onOpenConfigTemplatesModal,
+  onOpenWebSerial,
   unreadAlertsCount = 0,
   auditIssuesCount = 0,
   auditHealthScore = 100,
@@ -478,6 +479,25 @@ export function Header({
                       <div>
                         <div className="font-semibold">Шаблоны CLI</div>
                         <div className="text-[10px] text-slate-400">Jinja2 генератор для Cisco, MikroTik, SNR</div>
+                      </div>
+                    </button>
+                  )}
+
+                  {/* WebSerial USB/COM Console */}
+                  {onOpenWebSerial && (
+                    <button
+                      onClick={() => { onOpenWebSerial(); setToolsMenuOpen(false); }}
+                      className={`w-full px-2.5 py-2 rounded-xl text-left flex items-center gap-2 transition cursor-pointer ${
+                        isLight ? 'hover:bg-slate-100' : 'hover:bg-slate-800'
+                      }`}
+                    >
+                      <Cable className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <div>
+                        <div className="font-semibold flex items-center gap-1.5">
+                          USB/COM Консоль (WebSerial)
+                          <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">ZTP</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400">Прямое подключение к кабелю консоли в браузере</div>
                       </div>
                     </button>
                   )}
@@ -909,6 +929,15 @@ export function Header({
                     >
                       <Code2 className="w-4 h-4 text-purple-400 shrink-0" />
                       <span>Шаблоны CLI</span>
+                    </button>
+                  )}
+                  {onOpenWebSerial && (
+                    <button
+                      onClick={() => { onOpenWebSerial(); setMobileMoreOpen(false); }}
+                      className="w-full px-2.5 py-2 rounded-xl text-left flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                    >
+                      <Cable className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>USB/COM Консоль (WebSerial)</span>
                     </button>
                   )}
                   <button

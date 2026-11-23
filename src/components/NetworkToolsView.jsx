@@ -4,7 +4,8 @@ import {
   AlertTriangle, ShieldAlert, Plus, Server, Layers, Globe, 
   ArrowRight, Activity, Calculator, Network, Check, ExternalLink,
   Cpu, HardDrive, Wifi, Video, Phone, Laptop, Terminal, Copy, Download, FileCode,
-  Sliders, Link2, ShieldCheck, Play, Send, ChevronRight, Hash, Eye, Info
+  Sliders, Link2, ShieldCheck, Play, Send, ChevronRight, Hash, Eye, Info,
+  Cable
 } from 'lucide-react';
 import { api } from '../api';
 import { generateSwitchConfig } from '../utils/configGenerator';
@@ -21,6 +22,7 @@ export default function NetworkToolsView({
   onNavigateToTopology,
   onOpenTroubleshoot,
   onOpenAudit,
+  onOpenWebSerial,
   theme = 'dark'
 }) {
   const isLight = theme === 'light';
@@ -520,6 +522,18 @@ export default function NetworkToolsView({
                 <span>{tab.label}</span>
               </button>
             ))}
+
+            {onOpenWebSerial && (
+              <button
+                type="button"
+                onClick={() => onOpenWebSerial()}
+                className="h-9 px-3 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm cursor-pointer ml-auto"
+                title="Прямой доступ к USB-консоли через Web Serial API"
+              >
+                <Cable className="w-3.5 h-3.5" />
+                <span>🔌 Консоль (WebSerial)</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
