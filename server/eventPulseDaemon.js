@@ -5,6 +5,8 @@
  */
 
 import dgram from 'dgram';
+import url from 'url';
+import { WebSocketServer } from 'ws';
 import snmp from 'net-snmp';
 import {
   parseSyslogMessage,
@@ -54,9 +56,59 @@ export class EventPulseDaemon {
     if (options.syslogPort) this.syslogPort = options.syslogPort;
     if (options.trapPort) this.trapPort = options.trapPort;
 
+    if (httpServer) {
+      this.initWebSocket(httpServer);
+    }
+
     this._startSyslogListener(this.syslogPort);
     this._startTrapListener(this.trapPort);
     this.isRunning = true;
+  }
+
+  /**
+   * Initializes WebSocket server for real-time event pushing.
+   * @param {Object} httpServer
+   */
+  initWebSocket(httpServer) {
+    if (!httpServer) return;
+    const wss = new WebSocketServer({ noServer: true });
+
+    httpServer.on('upgrade', (request, socket, head) => {
+      const parsedUrl = url.parse(request.url, true);
+      if (parsedUrl.pathname === '/ws/events') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit('connection', ws, request);
+        });
+      }
+    });
+
+    wss.on('connection', (ws) => {
+      this.wsClients.add(ws);
+
+      // Send initial catch-up payload to client
+      try {
+        const recent = this.storage?.getAlerts ? this.storage.getAlerts(50) : [];
+        ws.send(JSON.stringify({
+          type: 'sync',
+          data: {
+            recentAlerts: recent,
+            status: this.getStatus()
+          }
+        }));
+      } catch (err) {
+        console.warn('[EventPulse] Ошибка отправки sync пакета:', err.message);
+      }
+
+      ws.on('close', () => {
+        this.wsClients.delete(ws);
+      });
+
+      ws.on('error', () => {
+        this.wsClients.delete(ws);
+      });
+    });
+
+    this.wss = wss;
   }
 
   /**
