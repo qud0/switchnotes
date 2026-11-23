@@ -27,6 +27,7 @@ import { controlSwitchPort, batchControlSwitchPorts } from './portControlService
 import { runSwitchCableTest } from './cableTestService.js';
 import { getSwitchPortDdm, getSwitchAllDdm } from './ddmService.js';
 import { analyzeVlanProvisioning, applyVlanProvisioning, executeVlanProvisioningSsh } from './vlanWizardService.js';
+import { eventPulseDaemon } from './eventPulseDaemon.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1450,6 +1451,26 @@ app.delete('/api/monitoring/alerts', requireRole('admin'), (req, res) => {
   }
 });
 
+// Live Event Pulse Daemon Status
+app.get('/api/events/status', (req, res) => {
+  try {
+    res.json(eventPulseDaemon.getStatus());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Diagnostic Event Simulator
+app.post('/api/events/simulate', (req, res) => {
+  try {
+    const { switchId, portNum, type, message } = req.body || {};
+    const alert = eventPulseDaemon.simulateEvent({ switchId, portNum, type, message });
+    res.json({ success: true, alert });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get rolling telemetry history for a specific switch & port
 app.get('/api/switches/:id/ports/:portNum/history', (req, res) => {
   try {
@@ -1901,6 +1922,7 @@ server.listen(PORT, () => {
     backupScheduler.init();
     snmpMonitorDaemon.init(storage);
     adSyncService.init(storage);
+    eventPulseDaemon.init(server, storage);
   } catch (err) {
     console.error('[Services] Ошибка инициализации фоновых служб:', err.message);
   }
@@ -1911,6 +1933,7 @@ const handleShutdown = (signal) => {
   console.log(`\n[SwitchBook Server] Получен сигнал ${signal}. Завершение работы...`);
   try {
     snmpMonitorDaemon.stop();
+    eventPulseDaemon.stop();
   } catch {}
   server.close(() => {
     console.log('[SwitchBook Server] HTTP и WebSocket соединения закрыты. Процесс завершен.');
