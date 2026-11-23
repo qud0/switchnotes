@@ -649,6 +649,22 @@ export const api = {
     return res.json();
   },
 
+  getEventPulseStatus: async () => {
+    const res = await fetch(`${API_BASE}/events/status`);
+    if (!res.ok) throw new Error('Не удалось получить статус Event Pulse');
+    return res.json();
+  },
+
+  simulateEvent: async ({ switchId, portNum, type, message }) => {
+    const res = await fetch(`${API_BASE}/events/simulate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ switchId, portNum, type, message })
+    });
+    if (!res.ok) throw new Error('Не удалось симулировать событие');
+    return res.json();
+  },
+
   getPortTelemetryHistory: async (switchId, portNumber) => {
     const res = await fetch(`${API_BASE}/switches/${switchId}/ports/${portNumber}/history`);
     if (!res.ok) throw new Error('Не удалось загрузить историю телеметрии порта');

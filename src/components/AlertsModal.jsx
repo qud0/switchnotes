@@ -24,7 +24,10 @@ import {
   MessageSquare,
   Loader2,
   Sliders,
-  CheckCheck
+  CheckCheck,
+  Zap,
+  Play,
+  RadioTower
 } from 'lucide-react';
 import { api } from '../api';
 
@@ -37,12 +40,23 @@ export function AlertsModal({
   onSelectSwitch,
   soundEnabled = true,
   onToggleSound,
+  isEventPulseConnected = false,
+  eventPulseStatus = null,
+  switches = [],
   theme = 'dark'
 }) {
   const [activeTab, setActiveTab] = useState('events'); // 'events' | 'channels'
   const [filterSeverity, setFilterSeverity] = useState('all'); // 'all' | 'critical' | 'warning' | 'info'
   const [filterAck, setFilterAck] = useState('all'); // 'all' | 'unack' | 'ack'
   const [searchQuery, setSearchQuery] = useState('');
+  const [showSimulateModal, setShowSimulateModal] = useState(false);
+  const [simForm, setSimForm] = useState({
+    switchId: switches[0]?.id || '',
+    portNum: 1,
+    type: 'link_down',
+    message: ''
+  });
+  const [simulating, setSimulating] = useState(false);
 
   // Notification settings state
   const [notifSettings, setNotifSettings] = useState({
@@ -241,11 +255,25 @@ export function AlertsModal({
             </button>
           </div>
 
-          {activeTab === 'channels' && (
-            <div className="text-[11px] text-slate-500 font-mono hidden sm:block">
-              SNMP Monitor Daemon
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {eventPulseStatus && (
+              <div
+                className="hidden sm:flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded-md bg-slate-800/80 border border-slate-700/60 text-slate-300"
+                title={`Syslog: UDP ${eventPulseStatus.syslogPort} | SNMP Trap: UDP ${eventPulseStatus.trapPort} | Пакетов: ${eventPulseStatus.packetsReceived}`}
+              >
+                <span className={`w-2 h-2 rounded-full ${isEventPulseConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                <span>Live Event Pulse: UDP {eventPulseStatus.syslogPort}</span>
+              </div>
+            )}
+            <button
+              onClick={() => setShowSimulateModal(true)}
+              className="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-[11px] font-semibold flex items-center gap-1 transition-all cursor-pointer"
+              title="Отправить синтетическое событие в реальном времени для проверки"
+            >
+              <Zap className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Тест события</span>
+            </button>
+          </div>
         </div>
 
         {activeTab === 'events' ? (
@@ -804,6 +832,110 @@ export function AlertsModal({
                 {savingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 <span>Сохранить настройки</span>
               </button>
+            </div>
+          </div>
+        )}
+        {/* Diagnostic Event Simulation Popup */}
+        {showSimulateModal && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden p-5 flex flex-col gap-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2 text-indigo-400">
+                  <Zap className="w-4 h-4" />
+                  <h3 className="text-sm font-bold text-white">Симуляция события Live Event Pulse</h3>
+                </div>
+                <button
+                  onClick={() => setShowSimulateModal(false)}
+                  className="text-slate-400 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {switches && switches.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">Коммутатор:</label>
+                    <select
+                      value={simForm.switchId}
+                      onChange={(e) => setSimForm({ ...simForm, switchId: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200"
+                    >
+                      {switches.map((sw) => (
+                        <option key={sw.id} value={sw.id}>
+                          {sw.name} ({sw.ip || 'no IP'}) - {sw.vendor || 'Unknown'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">Номер порта:</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="52"
+                      value={simForm.portNum}
+                      onChange={(e) => setSimForm({ ...simForm, portNum: Number(e.target.value) })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">Тип события:</label>
+                    <select
+                      value={simForm.type}
+                      onChange={(e) => setSimForm({ ...simForm, type: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200"
+                    >
+                      <option value="link_down">Линк DOWN (Critical)</option>
+                      <option value="link_up">Линк UP (Info)</option>
+                      <option value="loop_detect">STP Loop Detect (Critical)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Текст сообщения:</label>
+                  <input
+                    type="text"
+                    value={simForm.message}
+                    onChange={(e) => setSimForm({ ...simForm, message: e.target.value })}
+                    placeholder="Например: Тестовое отключение кабеля инженером"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowSimulateModal(false)}
+                  className="px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  disabled={simulating}
+                  onClick={async () => {
+                    setSimulating(true);
+                    try {
+                      await api.simulateEvent(simForm);
+                      setShowSimulateModal(false);
+                    } catch (err) {
+                      console.error('Simulation error:', err);
+                    } finally {
+                      setSimulating(false);
+                    }
+                  }}
+                  className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  {simulating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                  <span>Запустить событие</span>
+                </button>
+              </div>
             </div>
           </div>
         )}

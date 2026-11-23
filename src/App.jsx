@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from 'react';
+import { useEventPulse } from './hooks/useEventPulse';
 import { api } from './api';
 import { Header } from './components/Header';
 import { SwitchCard } from './components/SwitchCard';
@@ -378,6 +379,22 @@ export default function App() {
     const alertInterval = setInterval(fetchNetworkAlerts, 9000);
     return () => clearInterval(alertInterval);
   }, []);
+
+  // Live Event Pulse WebSocket stream
+  const { isConnected: isEventPulseConnected, daemonStatus: eventPulseStatus } = useEventPulse({
+    soundEnabled: alertSoundEnabled,
+    onSync: useCallback((syncData) => {
+      if (syncData?.recentAlerts && syncData.recentAlerts.length > 0) {
+        setNetworkAlerts(syncData.recentAlerts);
+      }
+    }, []),
+    onEvent: useCallback((newEvent) => {
+      setNetworkAlerts(prev => [newEvent, ...prev.filter(a => a.id !== newEvent.id)].slice(0, 150));
+      if (newEvent.severity === 'critical') {
+        toast.show(`🚨 ${newEvent.title}`, 'error');
+      }
+    }, [toast])
+  });
 
   const handleAcknowledgeAlert = async (alertId) => {
     try {
@@ -1556,6 +1573,9 @@ export default function App() {
         }}
         soundEnabled={alertSoundEnabled}
         onToggleSound={toggleAlertSound}
+        isEventPulseConnected={isEventPulseConnected}
+        eventPulseStatus={eventPulseStatus}
+        switches={switches}
         theme={theme}
       />
 
