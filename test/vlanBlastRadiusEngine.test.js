@@ -190,3 +190,98 @@ test('calculateBlastRadiusAssets accurately enumerates isolated servers and IPAM
   assert.equal(assets.affectedPortsCount, 2);
 });
 
+test('generateVendorScripts produces valid SNR-OS and MikroTik CLI and rollback commands', () => {
+  const engine = new VlanBlastRadiusEngine();
+
+  // 1. SNR Switch
+  const swSnr = { id: 'sw-snr', name: 'SNR-CORE', vendor: 'SNR' };
+  const portSnr = { id: 'p-1', number: 5, mode: 'access', vlan: 10 };
+  const proposalSnr = {
+    action: 'change_access_vlan',
+    targetVlanId: 50
+  };
+
+  const scriptsSnr = engine.generateVendorScripts(swSnr, portSnr, proposalSnr);
+  assert.equal(scriptsSnr.vendor, 'SNR');
+  assert.ok(scriptsSnr.commands.some(c => c.includes('switchport access vlan 50')));
+  assert.ok(scriptsSnr.rollback.some(c => c.includes('switchport access vlan 10')));
+
+  // 2. MikroTik RouterOS
+  const swMt = { id: 'sw-mt', name: 'MT-ACC', vendor: 'MikroTik' };
+  const portMt = { id: 'p-2', number: 3, name: 'ether3', mode: 'access', vlan: 20 };
+  const proposalMt = {
+    action: 'change_access_vlan',
+    targetVlanId: 60
+  };
+
+  const scriptsMt = engine.generateVendorScripts(swMt, portMt, proposalMt);
+  assert.equal(scriptsMt.vendor, 'MikroTik');
+  assert.ok(scriptsMt.commands.some(c => c.includes('pvid=60')));
+  assert.ok(scriptsMt.rollback.some(c => c.includes('pvid=20')));
+});
+
+test('simulate end-to-end executes simulation pipeline and returns BlastRadiusResult', () => {
+  const engine = new VlanBlastRadiusEngine();
+  const coreSw = {
+    id: 'sw-core',
+    name: 'CORE-01',
+    role: 'core',
+    ip: '192.168.10.1',
+    vendor: 'SNR',
+    ports: [
+      { id: 'p-core-1', number: 1, mode: 'trunk', taggedVlans: [10, 20], linkedSwitchId: 'sw-acc', linkedPortId: 'p-acc-1' }
+    ]
+  };
+
+  const accSw = {
+    id: 'sw-acc',
+    name: 'ACC-01',
+    role: 'access',
+    ip: '192.168.10.10',
+    vendor: 'SNR',
+    ports: [
+      { id: 'p-acc-1', number: 1, mode: 'trunk', taggedVlans: [10, 20], linkedSwitchId: 'sw-core', linkedPortId: 'p-core-1' },
+      { id: 'p-acc-2', number: 2, mode: 'access', vlan: 20 }
+    ]
+  };
+
+  engine.storage = {
+    getSwitches: () => [coreSw, accSw],
+    getVlans: () => [
+      { id: 10, name: 'Mgmt', subnet: '192.168.10.0/24', gateway: '192.168.10.1' },
+      { id: 20, name: 'Users', subnet: '10.20.0.0/24', gateway: '10.20.0.1' }
+    ],
+    getServers: () => [],
+    getIpamRecords: () => [],
+    getPatchPanels: () => []
+  };
+
+  // Safe proposal: change access port 2 on accSw from VLAN 20 to VLAN 30
+  const safeProposal = {
+    switchId: 'sw-acc',
+    portId: 'p-acc-2',
+    action: 'change_access_vlan',
+    targetVlanId: 30
+  };
+
+  const safeResult = engine.simulate(safeProposal);
+  assert.ok(safeResult);
+  assert.equal(safeResult.riskLevel, 'SAFE');
+  assert.ok(safeResult.cliScript.commands.length > 0);
+
+  // Unsafe proposal: remove Management VLAN 10 from trunk p-core-1
+  const unsafeProposal = {
+    switchId: 'sw-core',
+    portId: 'p-core-1',
+    action: 'remove_trunk_vlan',
+    targetVlanId: 10
+  };
+
+  const unsafeResult = engine.simulate(unsafeProposal);
+  assert.ok(unsafeResult);
+  assert.equal(unsafeResult.riskLevel, 'CRITICAL');
+  assert.ok(unsafeResult.guardrailViolations.length > 0);
+  assert.ok(unsafeResult.isolatedSwitches.length > 0);
+});
+
+

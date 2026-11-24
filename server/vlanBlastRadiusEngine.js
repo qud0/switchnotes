@@ -357,6 +357,253 @@ export class VlanBlastRadiusEngine {
       affectedPortsCount
     };
   }
+
+  /**
+   * Generates vendor CLI and rollback scripts for SNR and MikroTik.
+   * @param {Object} switchItem
+   * @param {Object} portItem
+   * @param {Object} proposal
+   * @param {Object} [peerSwitchItem]
+   * @param {Object} [peerPortItem]
+   * @returns {{ vendor: string, commands: string[], rollback: string[], peerCommands?: string[], peerRollback?: string[] }}
+   */
+  generateVendorScripts(switchItem, portItem, proposal, peerSwitchItem = null, peerPortItem = null) {
+    const vendor = (switchItem?.vendor || 'SNR').toLowerCase().includes('mikrotik') ? 'MikroTik' : 'SNR';
+    const isMikroTik = vendor === 'MikroTik';
+
+    const portName = portItem.name || (isMikroTik ? `ether${portItem.number || 1}` : `GigabitEthernet1/0/${portItem.number || 1}`);
+    const commands = [];
+    const rollback = [];
+
+    const action = proposal.action;
+    const targetVlan = Number(proposal.targetVlanId) || 1;
+    const prevVlan = Number(portItem.vlan) || 1;
+    const prevTagged = (portItem.taggedVlans || []).map(Number);
+    const targetTagged = (proposal.targetVlans || []).map(Number);
+
+    if (isMikroTik) {
+      if (action === 'change_access_vlan') {
+        commands.push(`/interface bridge port set [find interface="${portName}"] pvid=${targetVlan}`);
+        commands.push(`/interface bridge vlan add bridge=bridge-lan vlan-ids=${targetVlan} untagged="${portName}" comment="Set by BlastRadiusSimulator"`);
+        rollback.push(`/interface bridge port set [find interface="${portName}"] pvid=${prevVlan}`);
+      } else if (action === 'remove_trunk_vlan') {
+        commands.push(`/interface bridge vlan set [find vlan-ids=${targetVlan}] tagged=[/interface bridge vlan get [find vlan-ids=${targetVlan}] tagged] comment="Remove ${portName} from vlan ${targetVlan}"`);
+        rollback.push(`/interface bridge vlan add bridge=bridge-lan vlan-ids=${targetVlan} tagged="${portName}"`);
+      } else if (action === 'add_trunk_vlan') {
+        commands.push(`/interface bridge vlan add bridge=bridge-lan vlan-ids=${targetVlan} tagged="${portName}"`);
+        rollback.push(`/interface bridge vlan remove [find vlan-ids=${targetVlan}]`);
+      } else if (action === 'set_trunk_vlans') {
+        commands.push(`/interface bridge port set [find interface="${portName}"] frame-types=admit-only-vlan-tagged ingress-filtering=yes`);
+        targetTagged.forEach(vid => {
+          commands.push(`/interface bridge vlan add bridge=bridge-lan vlan-ids=${vid} tagged="${portName}"`);
+        });
+        prevTagged.forEach(vid => {
+          rollback.push(`/interface bridge vlan add bridge=bridge-lan vlan-ids=${vid} tagged="${portName}"`);
+        });
+      }
+    } else {
+      // SNR NAG (SNR-OS)
+      commands.push('configure terminal');
+      commands.push(`interface ${portName}`);
+
+      rollback.push('configure terminal');
+      rollback.push(`interface ${portName}`);
+
+      if (action === 'change_access_vlan') {
+        commands.push(`switchport access vlan ${targetVlan}`);
+        rollback.push(`switchport access vlan ${prevVlan}`);
+      } else if (action === 'remove_trunk_vlan') {
+        commands.push(`switchport trunk allowed vlan remove ${targetVlan}`);
+        rollback.push(`switchport trunk allowed vlan add ${targetVlan}`);
+      } else if (action === 'add_trunk_vlan') {
+        commands.push(`switchport trunk allowed vlan add ${targetVlan}`);
+        rollback.push(`switchport trunk allowed vlan remove ${targetVlan}`);
+      } else if (action === 'set_trunk_vlans') {
+        commands.push(`switchport trunk allowed vlan ${targetTagged.join(',')}`);
+        rollback.push(`switchport trunk allowed vlan ${prevTagged.join(',') || 'none'}`);
+      }
+
+      commands.push('exit');
+      commands.push('write');
+
+      rollback.push('exit');
+      rollback.push('write');
+    }
+
+    const result = { vendor, commands, rollback };
+
+    // Dual-ended sync on peer port if requested
+    if (proposal.syncPeerPort && peerSwitchItem && peerPortItem) {
+      const peerRes = this.generateVendorScripts(peerSwitchItem, peerPortItem, { ...proposal, syncPeerPort: false });
+      result.peerVendor = peerRes.vendor;
+      result.peerCommands = peerRes.commands;
+      result.peerRollback = peerRes.rollback;
+      result.peerSwitchName = peerSwitchItem.name;
+    }
+
+    return result;
+  }
+
+  /**
+   * Simulates a hypothetical VLAN change on the network topology.
+   * @param {Object} proposal
+   * @param {string} proposal.switchId
+   * @param {string|number} proposal.portId
+   * @param {string} proposal.action - 'change_access_vlan' | 'remove_trunk_vlan' | 'add_trunk_vlan' | 'set_trunk_vlans'
+   * @param {number} [proposal.targetVlanId]
+   * @param {number[]} [proposal.targetVlans]
+   * @param {boolean} [proposal.syncPeerPort]
+   * @returns {Object} BlastRadiusResult
+   */
+  simulate(proposal) {
+    const rawSwitches = this.storage?.getSwitches ? this.storage.getSwitches() : [];
+    const clonedSwitches = JSON.parse(JSON.stringify(rawSwitches));
+
+    const targetSw = clonedSwitches.find(s => String(s.id) === String(proposal.switchId));
+    if (!targetSw) {
+      throw new Error(`Коммутатор с ID ${proposal.switchId} не найден`);
+    }
+
+    const targetPort = (targetSw.ports || []).find(p => String(p.id) === String(proposal.portId) || String(p.number) === String(proposal.portId));
+    if (!targetPort) {
+      throw new Error(`Порт ${proposal.portId} на коммутаторе ${targetSw.name} не найден`);
+    }
+
+    // Find peer port if inter-switch link
+    let peerSw = null;
+    let peerPort = null;
+    if (targetPort.linkedSwitchId && targetPort.linkedPortId) {
+      peerSw = clonedSwitches.find(s => String(s.id) === String(targetPort.linkedSwitchId));
+      if (peerSw) {
+        peerPort = (peerSw.ports || []).find(p => String(p.id) === String(targetPort.linkedPortId) || String(p.number) === String(targetPort.linkedPortId));
+      }
+    }
+
+    const affectedVlanIds = [];
+    const targetVid = Number(proposal.targetVlanId);
+
+    // Apply hypothetical change to cloned port
+    if (proposal.action === 'change_access_vlan') {
+      if (targetPort.vlan) affectedVlanIds.push(Number(targetPort.vlan));
+      if (targetVid) affectedVlanIds.push(targetVid);
+      targetPort.vlan = targetVid;
+    } else if (proposal.action === 'remove_trunk_vlan') {
+      if (targetVid) affectedVlanIds.push(targetVid);
+      targetPort.taggedVlans = (targetPort.taggedVlans || []).map(Number).filter(v => v !== targetVid);
+      if (proposal.syncPeerPort && peerPort) {
+        peerPort.taggedVlans = (peerPort.taggedVlans || []).map(Number).filter(v => v !== targetVid);
+      }
+    } else if (proposal.action === 'add_trunk_vlan') {
+      if (targetVid) affectedVlanIds.push(targetVid);
+      const cur = new Set((targetPort.taggedVlans || []).map(Number));
+      cur.add(targetVid);
+      targetPort.taggedVlans = Array.from(cur);
+      if (proposal.syncPeerPort && peerPort) {
+        const peerCur = new Set((peerPort.taggedVlans || []).map(Number));
+        peerCur.add(targetVid);
+        peerPort.taggedVlans = Array.from(peerCur);
+      }
+    } else if (proposal.action === 'set_trunk_vlans') {
+      (targetPort.taggedVlans || []).forEach(v => affectedVlanIds.push(Number(v)));
+      (proposal.targetVlans || []).forEach(v => affectedVlanIds.push(Number(v)));
+      targetPort.taggedVlans = (proposal.targetVlans || []).map(Number);
+      if (proposal.syncPeerPort && peerPort) {
+        peerPort.taggedVlans = (proposal.targetVlans || []).map(Number);
+      }
+    }
+
+    const uniqueAffectedVlans = Array.from(new Set(affectedVlanIds.filter(Boolean)));
+
+    // 1. Management Reachability Guardrails
+    const mgmtCheck = this.verifyManagementReachability(clonedSwitches, uniqueAffectedVlans);
+
+    // 2. Transit Partitions (only applicable when modifying trunk ports)
+    const isModifyingTrunk = targetPort.mode === 'trunk' || proposal.action.includes('trunk');
+    const partitions = isModifyingTrunk ? this.detectTransitPartitions(clonedSwitches, uniqueAffectedVlans) : [];
+
+    // Collect disconnected port items
+    const disconnectedPortItems = [];
+    partitions.forEach(part => {
+      (part.disconnectedPorts || []).forEach(p => {
+        disconnectedPortItems.push({
+          switchId: part.switchId,
+          portId: p.id,
+          number: p.number,
+          vlan: p.vlan || part.vlanId
+        });
+      });
+    });
+
+    // 3. Asset Blast Radius
+    const assets = this.calculateBlastRadiusAssets({
+      clonedSwitches,
+      isolatedSwitchIds: mgmtCheck.isolatedSwitchIds,
+      disconnectedPortItems,
+      affectedVlanIds: uniqueAffectedVlans
+    });
+
+    // 4. Broken Links list
+    const brokenLinks = [];
+    if (partitions.length > 0 || !mgmtCheck.safe) {
+      if (targetPort.linkedSwitchId) {
+        brokenLinks.push({
+          fromSwitch: targetSw.name,
+          fromPort: targetPort.name || `Port ${targetPort.number}`,
+          toSwitch: peerSw ? peerSw.name : targetPort.linkedSwitchId,
+          toPort: peerPort ? (peerPort.name || `Port ${peerPort.number}`) : targetPort.linkedPortId,
+          vlanId: targetVid || uniqueAffectedVlans[0] || null
+        });
+      }
+    }
+
+    // 5. Risk Assessment
+    let riskLevel = 'SAFE';
+    let riskScore = 10;
+    if (!mgmtCheck.safe) {
+      riskLevel = 'CRITICAL';
+      riskScore = 95;
+    } else if (partitions.length > 0) {
+      riskLevel = 'CRITICAL';
+      riskScore = 80;
+    } else if (assets.affectedServers.length > 0 || assets.affectedPortsCount > 0) {
+      riskLevel = 'WARNING';
+      riskScore = 45;
+    }
+
+    // Summary Text
+    let summary = '';
+    if (riskLevel === 'CRITICAL') {
+      summary = `⚠️ КРИТИЧЕСКИЙ РИСК: изменение изолирует ${mgmtCheck.isolatedSwitchIds.length || partitions.length} коммутатор(ов) и отключит ${assets.affectedPortsCount} портов.`;
+    } else if (riskLevel === 'WARNING') {
+      summary = `Предупреждение: изменение затронет ${assets.affectedPortsCount} портов доступа и ${assets.affectedServers.length} серверов.`;
+    } else {
+      summary = `Безопасно: изменение локализовано, несанкционированных разрывов сети не обнаружено.`;
+    }
+
+    // 6. Vendor CLI and Rollback
+    const cliScript = this.generateVendorScripts(targetSw, targetPort, proposal, peerSw, peerPort);
+
+    // Isolated switch objects
+    const isolatedSwitches = clonedSwitches
+      .filter(s => mgmtCheck.isolatedSwitchIds.includes(s.id))
+      .map(s => ({ id: s.id, name: s.name, ip: s.ip }));
+
+    return {
+      riskLevel,
+      riskScore,
+      summary,
+      guardrailViolations: mgmtCheck.violations,
+      brokenLinks,
+      isolatedSwitches,
+      transitPartitions: partitions,
+      affectedServers: assets.affectedServers,
+      affectedIpamHosts: assets.affectedIpamHosts,
+      affectedSubnets: assets.affectedSubnets,
+      affectedPortsCount: assets.affectedPortsCount,
+      cliScript,
+      proposal
+    };
+  }
 }
 
 export const vlanBlastRadiusEngine = new VlanBlastRadiusEngine();
