@@ -41,11 +41,16 @@ import {
   Shield,
   Info,
   Crown,
-  RefreshCw
+  RefreshCw,
+  Flame,
+  Skull,
+  Bomb,
+  Scissors
 } from 'lucide-react';
 import { VlanBadge } from './VlanBadge';
 import { checkVlanMismatch } from '../utils/vlanMismatch';
 import { calculateSpanningTree } from '../utils/stpSimulator';
+import { simulateChaosNetwork } from '../utils/chaosSimulator';
 import { api, getAuthToken } from '../api';
 import { useToast } from '../context/ToastContext';
 import VlanWizardModal from './VlanWizardModal';
@@ -121,6 +126,13 @@ export function TopologyView({
   const [stpManualRootId, setStpManualRootId] = useState(null);
   const [stpProtocol, setStpProtocol] = useState('rstp'); // 'rstp' | 'stp'
   const [stpDisabledLinks, setStpDisabledLinks] = useState(new Set());
+
+  // Chaos Monkey & Blast Radius Simulator State
+  const [chaosModeActive, setChaosModeActive] = useState(false);
+  const [failedLinkIds, setFailedLinkIds] = useState(new Set());
+  const [failedSwitchIds, setFailedSwitchIds] = useState(new Set());
+  const [chaosProtocol, setChaosProtocol] = useState('rstp'); // 'rstp' | 'stp'
+  const [isChaosHudExpanded, setIsChaosHudExpanded] = useState(true);
 
   // LLDP/CDP Live Topology Auto-Stitcher state
   const [isLldpModalOpen, setIsLldpModalOpen] = useState(false);
@@ -456,6 +468,65 @@ export function TopologyView({
       protocol: stpProtocol
     });
   }, [stpSimulationActive, switches, physicalLinks, stpManualRootId, stpDisabledLinks, stpProtocol]);
+
+  // Chaos Monkey Network Failure & Blast Radius Calculation
+  const chaosCalculation = useMemo(() => {
+    if (!chaosModeActive) return null;
+    return simulateChaosNetwork({
+      switches,
+      links: physicalLinks,
+      servers,
+      ipAllocations,
+      failedLinkIds: Array.from(failedLinkIds),
+      failedSwitchIds: Array.from(failedSwitchIds),
+      manualRootId: stpManualRootId,
+      protocol: chaosProtocol
+    });
+  }, [chaosModeActive, switches, physicalLinks, servers, ipAllocations, failedLinkIds, failedSwitchIds, stpManualRootId, chaosProtocol]);
+
+  const handleTriggerRandomDisaster = () => {
+    const availableLinks = physicalLinks.filter(l => !failedLinkIds.has(l.id));
+    const availableSwitches = switches.filter(s => !failedSwitchIds.has(String(s.id)));
+
+    if (availableLinks.length === 0 && availableSwitches.length === 0) {
+      toast.info('Все компоненты сети уже выведены из строя!');
+      return;
+    }
+
+    const pickLink = availableLinks.length > 0 && (Math.random() < 0.6 || availableSwitches.length === 0);
+    if (pickLink) {
+      const target = availableLinks[Math.floor(Math.random() * availableLinks.length)];
+      setFailedLinkIds(prev => new Set([...prev, target.id]));
+      toast.error(`🐒 Chaos Monkey оборвал линк: ${target.sourceSwitch.name} ⇄ ${target.targetSwitch.name}`);
+    } else {
+      const target = availableSwitches[Math.floor(Math.random() * availableSwitches.length)];
+      setFailedSwitchIds(prev => new Set([...prev, String(target.id)]));
+      toast.error(`🐒 Chaos Monkey отключил питание: ${target.name}`);
+    }
+  };
+
+  const handleTriggerCoreDisaster = () => {
+    const coreSwitch = switches.find(s => s.role === 'core' || s.name.toLowerCase().includes('core')) || switches[0];
+    if (!coreSwitch) return;
+    const coreId = String(coreSwitch.id);
+    setFailedSwitchIds(prev => {
+      const next = new Set(prev);
+      if (next.has(coreId)) {
+        next.delete(coreId);
+        toast.success(`Питание Core Switch ${coreSwitch.name} восстановлено!`);
+      } else {
+        next.add(coreId);
+        toast.error(`🔥 Сбой ядра сети: ${coreSwitch.name} выключен!`);
+      }
+      return next;
+    });
+  };
+
+  const handleResetChaos = () => {
+    setFailedLinkIds(new Set());
+    setFailedSwitchIds(new Set());
+    toast.success('Сеть полностью восстановлена! Все аварии устранены.');
+  };
 
   // Bottleneck & Single Point of Failure (SPOF) Analysis
   const bottleneckAnalysis = useMemo(() => {
@@ -1405,6 +1476,36 @@ export function TopologyView({
             )}
           </button>
 
+          {/* Chaos Monkey & Blast Radius Simulator Toggle */}
+          <button
+            onClick={() => {
+              const next = !chaosModeActive;
+              setChaosModeActive(next);
+              if (next) {
+                setSelectedLink(null);
+              } else {
+                setFailedLinkIds(new Set());
+                setFailedSwitchIds(new Set());
+              }
+            }}
+            className={`h-9 px-3 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 whitespace-nowrap ${
+              chaosModeActive
+                ? 'bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-600/30 ring-2 ring-rose-400/50'
+                : isLight
+                ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-300'
+                : 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border-rose-500/30'
+            }`}
+            title="Chaos Monkey & Blast Radius Simulator: моделирование аварий кабелей и свитчей"
+          >
+            <Flame className={`w-3.5 h-3.5 ${chaosModeActive ? 'animate-bounce text-yellow-300' : 'text-rose-400'}`} />
+            <span>Chaos Monkey</span>
+            {chaosModeActive && (failedLinkIds.size > 0 || failedSwitchIds.size > 0) && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-white text-rose-700">
+                {failedLinkIds.size + failedSwitchIds.size} сбоев
+              </span>
+            )}
+          </button>
+
           {/* Bottleneck & SPOF Analysis Button */}
           <button
             onClick={() => setShowBottlenecks(!showBottlenecks)}
@@ -1670,6 +1771,96 @@ export function TopologyView({
         </div>
       )}
 
+      {/* Chaos Monkey Interactive Control Sub-bar */}
+      {chaosModeActive && (
+        <div className={`flex flex-wrap items-center justify-between gap-3 py-2 px-3 border-b text-xs shrink-0 ${
+          isLight ? 'bg-rose-50/90 border-rose-200' : 'bg-rose-950/30 border-rose-500/30'
+        }`}>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <span className="font-bold flex items-center gap-1.5 text-rose-500">
+              <Flame className="w-4 h-4 animate-bounce text-yellow-400" />
+              <span>Chaos Monkey Режим:</span>
+            </span>
+
+            {/* Protocol Selector */}
+            <div className="flex items-center gap-1 font-mono text-[11px]">
+              <span className="text-slate-400">Протокол:</span>
+              <div className="flex rounded-md border border-slate-700 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setChaosProtocol('rstp')}
+                  className={`px-2 py-0.5 cursor-pointer ${chaosProtocol === 'rstp' ? 'bg-rose-600 text-white font-bold' : 'bg-slate-900 text-slate-400'}`}
+                >
+                  802.1w RSTP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChaosProtocol('stp')}
+                  className={`px-2 py-0.5 cursor-pointer ${chaosProtocol === 'stp' ? 'bg-rose-600 text-white font-bold' : 'bg-slate-900 text-slate-400'}`}
+                >
+                  802.1D STP
+                </button>
+              </div>
+            </div>
+
+            {/* Convergence & Blast Stats */}
+            {chaosCalculation && (
+              <div className="flex items-center gap-2 text-[11px] font-mono">
+                <span className={`px-2 py-0.5 rounded font-bold border ${
+                  chaosCalculation.incidentStatus === 'nominal'
+                    ? 'bg-slate-500/10 text-slate-400 border-slate-500/20'
+                    : chaosCalculation.incidentStatus === 'healed'
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                    : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                }`}>
+                  Статус: {chaosCalculation.incidentStatus.toUpperCase()}
+                </span>
+                <span className="text-slate-400">
+                  Сходимость: <strong className="text-white">{chaosCalculation.convergenceTime}</strong>
+                </span>
+                {chaosCalculation.reroutedLinks.length > 0 && (
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold flex items-center gap-1">
+                    🔀 RSTP Failover: {chaosCalculation.reroutedLinks.length}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleTriggerRandomDisaster}
+              className="h-7 px-2.5 rounded-md bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/40 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+            >
+              <Bomb className="w-3.5 h-3.5" />
+              <span>Случайная авария</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleTriggerCoreDisaster}
+              className="h-7 px-2.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+            >
+              <Skull className="w-3.5 h-3.5" />
+              <span>Падение Core</span>
+            </button>
+            {(failedLinkIds.size > 0 || failedSwitchIds.size > 0) && (
+              <button
+                type="button"
+                onClick={handleResetChaos}
+                className="h-7 px-2.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer shadow-md transition-all"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Восстановить всё ({failedLinkIds.size + failedSwitchIds.size})</span>
+              </button>
+            )}
+            <span className="text-[11px] text-rose-400/90 font-medium hidden lg:inline">
+              💡 Кликните по линку (✂) для обрыва или по свитчу (💥) для сбоя питания
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* SVG Canvas Area */}
       <div
         ref={containerRef}
@@ -1774,6 +1965,11 @@ export function TopologyView({
             const isStpFailed = Boolean(stpLinkState?.isFailed);
             const isStpForwarding = Boolean(stpLinkState?.isForwarding);
 
+            // Chaos Monkey Link State
+            const isChaosFailed = Boolean(chaosModeActive && failedLinkIds.has(link.id));
+            const chaosRerouteInfo = chaosModeActive && chaosCalculation?.reroutedLinks?.find(r => r.id === link.id);
+            const isChaosRerouted = Boolean(chaosRerouteInfo);
+
             const baseStrokeColor = link.hasMismatch
               ? '#ef4444'
               : isBottleneck
@@ -1794,7 +1990,11 @@ export function TopologyView({
               ? '#f59e0b' // Amber 100M
               : (isLight ? '#10b981' : '#34d399'); // Emerald 1G
 
-            const strokeColor = isStpFailed
+            const strokeColor = isChaosFailed
+              ? '#ef4444'
+              : isChaosRerouted
+              ? '#10b981'
+              : isStpFailed
               ? '#ef4444'
               : isStpBlocked
               ? '#f59e0b'
@@ -1802,7 +2002,11 @@ export function TopologyView({
               ? '#10b981'
               : baseStrokeColor;
 
-            const strokeWidth = isHovered
+            const strokeWidth = isChaosRerouted
+              ? 5
+              : isChaosFailed
+              ? 3.5
+              : isHovered
               ? 5.5
               : isTracedPath
               ? 4.5
@@ -1824,6 +2028,20 @@ export function TopologyView({
                 }`}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (chaosModeActive) {
+                    setFailedLinkIds(prev => {
+                      const next = new Set(prev);
+                      if (next.has(link.id)) {
+                        next.delete(link.id);
+                        toast.success(`Линк ${link.sourceSwitch.name} ⇄ ${link.targetSwitch.name} восстановлен`);
+                      } else {
+                        next.add(link.id);
+                        toast.error(`Кабель оборван: ${link.sourceSwitch.name} ⇄ ${link.targetSwitch.name}`);
+                      }
+                      return next;
+                    });
+                    return;
+                  }
                   if (stpSimulationActive) {
                     setStpDisabledLinks(prev => {
                       const next = new Set(prev);
@@ -1844,22 +2062,22 @@ export function TopologyView({
                   d={pathD}
                   fill="none"
                   stroke={strokeColor}
-                  strokeWidth={isStpBlocked ? 3 : strokeWidth}
-                  strokeDasharray={isStpBlocked ? '6 6' : isStpFailed ? '4 4' : undefined}
+                  strokeWidth={isChaosFailed ? 3.5 : isStpBlocked ? 3 : strokeWidth}
+                  strokeDasharray={isChaosFailed ? '6 4' : isStpBlocked ? '6 6' : isStpFailed ? '4 4' : undefined}
                   strokeLinecap="round"
-                  filter={link.hasMismatch || isBottleneck || isStpFailed ? 'url(#glow-error)' : isStpBlocked ? 'url(#glow-path)' : (isTracedPath || isHovered) ? 'url(#glow-path)' : 'url(#glow-healthy)'}
+                  filter={isChaosFailed || link.hasMismatch || isBottleneck || isStpFailed ? 'url(#glow-error)' : (isChaosRerouted || isStpBlocked || isTracedPath || isHovered) ? 'url(#glow-path)' : 'url(#glow-healthy)'}
                 />
 
                 {/* Animated Flow with traffic-proportional pulse particles and dynamic speed */}
-                {trafficAnimation && !link.hasMismatch && !isStpBlocked && !isStpFailed && (
+                {trafficAnimation && !link.hasMismatch && !isStpBlocked && !isStpFailed && !isChaosFailed && (
                   <path
                     d={pathD}
                     fill="none"
-                    stroke={link.utilizationPct > 80 ? '#fb7185' : '#ffffff'}
+                    stroke={isChaosRerouted ? '#34d399' : (link.utilizationPct > 80 ? '#fb7185' : '#ffffff')}
                     strokeWidth={Math.max(1.2, strokeWidth * 0.45)}
-                    strokeDasharray={link.totalMbps > 300 ? '6 8' : link.totalMbps > 50 ? '5 12' : '4 16'}
+                    strokeDasharray={isChaosRerouted ? '8 6' : (link.totalMbps > 300 ? '6 8' : link.totalMbps > 50 ? '5 12' : '4 16')}
                     strokeLinecap="round"
-                    className={link.totalMbps > 400 || link.is40G ? 'flow-fast' : 'flow-animation'}
+                    className={isChaosRerouted ? 'flow-fast' : (link.totalMbps > 400 || link.is40G ? 'flow-fast' : 'flow-animation')}
                     opacity={isLight ? 0.75 : 0.95}
                   />
                 )}
@@ -1868,22 +2086,38 @@ export function TopologyView({
                 <circle cx={x1} cy={y1} r={isHovered ? 4.5 : 3} fill={strokeColor} stroke="#ffffff" strokeWidth="1" />
                 <circle cx={x2} cy={y2} r={isHovered ? 4.5 : 3} fill={strokeColor} stroke="#ffffff" strokeWidth="1" />
 
-                {/* Link Badge in compact mode, or if hovered, or if traffic is active, or if STP simulation is on */}
-                {(stpSimulationActive || nodeViewMode === 'compact' || isHovered || isTracedPath || link.hasMismatch || (trafficAnimation && link.totalMbps > 0)) && (
+                {/* Link Badge in compact mode, or if hovered, or if traffic is active, or if STP simulation is on, or Chaos Monkey */}
+                {(chaosModeActive || stpSimulationActive || nodeViewMode === 'compact' || isHovered || isTracedPath || link.hasMismatch || (trafficAnimation && link.totalMbps > 0)) && (
                   <g transform={`translate(${midX}, ${midY})`}>
                     <rect
-                      x={stpSimulationActive ? "-80" : "-65"}
-                      y="-12"
-                      width={stpSimulationActive ? "160" : "130"}
-                      height="24"
+                      x={chaosModeActive ? "-90" : stpSimulationActive ? "-80" : "-65"}
+                      y="-13"
+                      width={chaosModeActive ? "180" : stpSimulationActive ? "160" : "130"}
+                      height="26"
                       rx="7"
                       fill={isLight ? '#ffffff' : '#0f172a'}
-                      stroke={isStpFailed ? '#ef4444' : isStpBlocked ? '#f59e0b' : isStpForwarding ? '#10b981' : (link.hasMismatch ? '#ef4444' : link.utilizationPct > 80 ? '#f43f5e' : strokeColor)}
-                      strokeWidth={isStpBlocked ? "2" : "1.5"}
-                      strokeDasharray={isStpBlocked ? "4 3" : undefined}
+                      stroke={isChaosFailed ? '#ef4444' : isChaosRerouted ? '#10b981' : isStpFailed ? '#ef4444' : isStpBlocked ? '#f59e0b' : isStpForwarding ? '#10b981' : (link.hasMismatch ? '#ef4444' : link.utilizationPct > 80 ? '#f43f5e' : strokeColor)}
+                      strokeWidth={isChaosFailed || isChaosRerouted ? "2.5" : isStpBlocked ? "2" : "1.5"}
+                      strokeDasharray={isChaosFailed ? "4 3" : isStpBlocked ? "4 3" : undefined}
                       className="shadow-md"
                     />
-                    {stpSimulationActive && stpLinkState ? (
+                    {chaosModeActive ? (
+                      <text
+                        x="0"
+                        y="4"
+                        textAnchor="middle"
+                        fill={isChaosFailed ? '#ef4444' : isChaosRerouted ? '#10b981' : '#94a3b8'}
+                        fontSize="9"
+                        fontFamily="Ubuntu Mono, monospace"
+                        fontWeight="bold"
+                      >
+                        {isChaosFailed
+                          ? '✂ ОБРЫВ (Клик=Вкл)'
+                          : isChaosRerouted
+                          ? `🔀 RSTP РЕЗЕРВ (+450M)`
+                          : '⚡ Исправен (Клик=✂)'}
+                      </text>
+                    ) : stpSimulationActive && stpLinkState ? (
                       <text
                         x="0"
                         y="3.5"
@@ -2218,6 +2452,9 @@ export function TopologyView({
             const rj45Ports = ports.filter(p => (p.number || 0) <= 24);
             const sfpPorts = ports.filter(p => (p.number || 0) > 24);
 
+            const isSwCrashed = chaosModeActive && failedSwitchIds.has(String(sw.id));
+            const isSwIsolated = chaosModeActive && chaosCalculation?.isolatedSwitches?.some(s => String(s.id) === String(sw.id));
+
             return (
               <div
                 key={sw.id}
@@ -2238,7 +2475,11 @@ export function TopologyView({
                     ? 'transition-none cursor-grabbing ring-4 ring-blue-400 z-30 shadow-2xl scale-[1.01]'
                     : 'transition-all cursor-grab'
                 } ${
-                  isLight
+                  isSwCrashed
+                    ? 'border-rose-500 ring-4 ring-rose-500/40 opacity-65 grayscale'
+                    : isSwIsolated
+                    ? 'border-amber-500 ring-4 ring-amber-400/50'
+                    : isLight
                     ? 'bg-white/95 border-slate-300 hover:border-blue-500 shadow-lg'
                     : 'bg-slate-900/95 border-slate-700/80 hover:border-blue-400 shadow-2xl backdrop-blur-md'
                 } ${
@@ -2249,6 +2490,21 @@ export function TopologyView({
                   isDimmed ? 'opacity-20 grayscale' : 'opacity-100'
                 }`}
               >
+                {/* Chaos Monkey Crash / Isolated Badges */}
+                {chaosModeActive && (
+                  <div className="absolute -top-3.5 left-4 z-40 pointer-events-none">
+                    {isSwCrashed ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-rose-600 text-white font-bold text-[10px] flex items-center gap-1 shadow-lg shadow-rose-600/50 ring-2 ring-white animate-pulse">
+                        💥 ПИТАНИЕ СВИТЧА ОТКЛЮЧЕНО
+                      </span>
+                    ) : isSwIsolated ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 font-bold text-[10px] flex items-center gap-1 shadow-lg shadow-amber-500/50 ring-2 ring-white animate-bounce">
+                        ⚠️ ИЗОЛИРОВАН ОТ ЯДРА
+                      </span>
+                    ) : null}
+                  </div>
+                )}
+
                 {/* STP Root Bridge / Path Cost Badge */}
                 {stpSimulationActive && stpCalculation?.switchStates[String(sw.id)] && (
                   <div className="absolute -top-3.5 left-4 z-40 pointer-events-none">
@@ -2286,6 +2542,46 @@ export function TopologyView({
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Chaos Monkey Switch Power Crash Toggle */}
+                    {chaosModeActive && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFailedSwitchIds(prev => {
+                            const next = new Set(prev);
+                            const swIdStr = String(sw.id);
+                            if (next.has(swIdStr)) {
+                              next.delete(swIdStr);
+                              toast.success(`Питание свитча ${sw.name} включено`);
+                            } else {
+                              next.add(swIdStr);
+                              toast.error(`Питание свитча ${sw.name} отключено (Crash)`);
+                            }
+                            return next;
+                          });
+                        }}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all shadow-xs ${
+                          isSwCrashed
+                            ? 'bg-emerald-600 text-white hover:bg-emerald-500 ring-1 ring-emerald-400'
+                            : 'bg-rose-500/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40'
+                        }`}
+                        title={isSwCrashed ? 'Включить питание свитча' : 'Симулировать отключение питания (Crash)'}
+                      >
+                        {isSwCrashed ? (
+                          <>
+                            <RotateCcw className="w-3 h-3" />
+                            <span>Вкл</span>
+                          </>
+                        ) : (
+                          <>
+                            <Skull className="w-3 h-3 text-rose-400" />
+                            <span>Сбой</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+
                     {sw.ip && (
                       <span className="font-mono text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-md border border-emerald-500/20 font-semibold">
                         {sw.ip}
@@ -2514,6 +2810,7 @@ export function TopologyView({
             const vms = srv.vms || [];
             const nics = srv.nics || [];
             const bridges = srv.bridges || [];
+            const isSrvIsolated = Boolean(chaosModeActive && chaosCalculation?.isolatedServers?.some(s => String(s.id) === String(srv.id)));
 
             return (
               <div
@@ -2535,7 +2832,9 @@ export function TopologyView({
                     ? 'transition-none cursor-grabbing ring-4 ring-indigo-400 z-30 shadow-2xl scale-[1.01]'
                     : 'transition-all cursor-grab'
                 } shadow-xl ${
-                  isLight
+                  isSrvIsolated
+                    ? 'border-amber-500 ring-4 ring-amber-400/40'
+                    : isLight
                     ? 'bg-linear-to-b from-indigo-50/95 to-white border-indigo-400 shadow-md'
                     : 'bg-linear-to-b from-slate-900/95 to-slate-950/95 border-indigo-500/50 shadow-indigo-500/10 backdrop-blur-md'
                 }`}
@@ -2553,7 +2852,13 @@ export function TopologyView({
                         <span className="font-mono font-bold text-xs text-slate-900 dark:text-white truncate">
                           {srv.name}
                         </span>
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981] shrink-0" />
+                        {isSrvIsolated ? (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">
+                            ⚠️ ИЗОЛИРОВАН
+                          </span>
+                        ) : (
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981] shrink-0" />
+                        )}
                       </div>
                       <div className="text-[10px] text-slate-400 font-mono truncate">
                         {srv.hostname || srv.ip} • {srv.vendor} {srv.model}
@@ -2841,6 +3146,251 @@ export function TopologyView({
             </>
           )}
         </div>
+
+        {/* Chaos Monkey Blast Radius Impact HUD */}
+        {chaosModeActive && chaosCalculation && (
+          <div className={`absolute top-4 right-4 z-30 w-88 md:w-96 rounded-2xl border p-4 shadow-2xl backdrop-blur-md text-xs space-y-3 max-h-[85vh] overflow-y-auto transition-all ${
+            isLight
+              ? 'bg-white/95 border-rose-300 text-slate-800'
+              : 'bg-slate-900/95 border-rose-500/50 text-slate-100'
+          }`}>
+            {/* Header */}
+            <div className="flex items-center justify-between pb-2 border-b border-rose-200 dark:border-rose-900/40">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-rose-500/20 text-rose-500">
+                  <Flame className="w-4 h-4 animate-bounce text-yellow-400" />
+                </div>
+                <div>
+                  <h3 className="font-mono font-bold text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                    Blast Radius Simulator
+                  </h3>
+                  <div className="text-[10px] text-slate-400 font-mono">
+                    Оценка зоны поражения и RSTP
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setIsChaosHudExpanded(!isChaosHudExpanded)}
+                  className="p-1 text-slate-400 hover:text-slate-200 cursor-pointer rounded-md hover:bg-slate-800"
+                  title={isChaosHudExpanded ? 'Свернуть HUD' : 'Развернуть HUD'}
+                >
+                  {isChaosHudExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setChaosModeActive(false);
+                    setFailedLinkIds(new Set());
+                    setFailedSwitchIds(new Set());
+                  }}
+                  className="p-1 text-slate-400 hover:text-rose-400 cursor-pointer rounded-md hover:bg-slate-800"
+                  title="Закрыть симулятор Chaos Monkey"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Status Banner */}
+            <div className={`p-3 rounded-xl border flex flex-col gap-1 ${
+              chaosCalculation.incidentStatus === 'nominal'
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                : chaosCalculation.incidentStatus === 'healed'
+                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 ring-1 ring-emerald-500/50'
+                : chaosCalculation.incidentStatus === 'critical'
+                ? 'bg-rose-500/20 border-rose-500/50 text-rose-300 ring-1 ring-rose-500/50'
+                : 'bg-amber-500/15 border-amber-500/40 text-amber-300 ring-1 ring-amber-500/50'
+            }`}>
+              <div className="flex items-center justify-between font-mono font-bold text-[11px]">
+                <span className="flex items-center gap-1.5">
+                  {chaosCalculation.incidentStatus === 'nominal' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                  {chaosCalculation.incidentStatus === 'healed' && <ShieldCheck className="w-4 h-4 text-emerald-400 animate-pulse" />}
+                  {chaosCalculation.incidentStatus === 'partitioned' && <AlertTriangle className="w-4 h-4 text-amber-400 animate-bounce" />}
+                  {chaosCalculation.incidentStatus === 'critical' && <Skull className="w-4 h-4 text-rose-400 animate-bounce" />}
+                  {chaosCalculation.incidentStatus === 'nominal'
+                    ? 'СЕТЬ В НОРМЕ'
+                    : chaosCalculation.incidentStatus === 'healed'
+                    ? 'RSTP FAILOVER: СХОДИМОСТЬ'
+                    : chaosCalculation.incidentStatus === 'critical'
+                    ? 'КРИТИЧЕСКИЙ СБОЙ: ЯДРО'
+                    : 'СЕГМЕНТ ИЗОЛИРОВАН'}
+                </span>
+                <span className="text-[10px] opacity-80">
+                  {chaosCalculation.convergenceTime}
+                </span>
+              </div>
+              <div className="text-[11px] font-sans opacity-90 leading-tight">
+                {chaosCalculation.incidentStatus === 'nominal' && 'Все узлы и каналы активны. Аварий не смоделировано.'}
+                {chaosCalculation.incidentStatus === 'healed' && 'Резервный линк успешно разблокирован протоколом RSTP. Сеть сохранила 100% связности!'}
+                {chaosCalculation.incidentStatus === 'partitioned' && `Обрыв вызвал изоляцию ${chaosCalculation.isolatedSwitches.length} коммутатора(ов) от ядра.`}
+                {chaosCalculation.incidentStatus === 'critical' && 'Корневой коммутатор отключен. Вся топология потеряла шлюз по умолчанию!'}
+              </div>
+            </div>
+
+            {/* Impact 2x2 Counters Grid */}
+            <div className="grid grid-cols-2 gap-2 font-mono">
+              <div className={`p-2.5 rounded-xl border flex flex-col justify-between ${
+                chaosCalculation.isolatedSwitches.length > 0
+                  ? 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                  : (isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800 text-slate-300')
+              }`}>
+                <div className="text-[10px] text-slate-400 font-sans">Изолировано свитчей</div>
+                <div className="text-lg font-bold mt-1">
+                  {chaosCalculation.isolatedSwitches.length}
+                </div>
+              </div>
+
+              <div className={`p-2.5 rounded-xl border flex flex-col justify-between ${
+                chaosCalculation.isolatedServers.length > 0
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                  : (isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800 text-slate-300')
+              }`}>
+                <div className="text-[10px] text-slate-400 font-sans">Затронуто серверов</div>
+                <div className="text-lg font-bold mt-1">
+                  {chaosCalculation.isolatedServers.length}
+                </div>
+              </div>
+
+              <div className={`p-2.5 rounded-xl border flex flex-col justify-between ${
+                chaosCalculation.isolatedEndpoints.length > 0
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                  : (isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800 text-slate-300')
+              }`}>
+                <div className="text-[10px] text-slate-400 font-sans">Рабочих мест / IPAM</div>
+                <div className="text-lg font-bold mt-1">
+                  {chaosCalculation.isolatedEndpoints.length}
+                </div>
+              </div>
+
+              <div className={`p-2.5 rounded-xl border flex flex-col justify-between ${
+                chaosCalculation.affectedVlanIds.length > 0
+                  ? 'bg-purple-500/10 border-purple-500/30 text-purple-400'
+                  : (isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800 text-slate-300')
+              }`}>
+                <div className="text-[10px] text-slate-400 font-sans">Затронутых VLAN</div>
+                <div className="text-lg font-bold mt-1">
+                  {chaosCalculation.affectedVlanIds.length}
+                </div>
+              </div>
+            </div>
+
+            {/* Expanded Detailed Breakdown */}
+            {isChaosHudExpanded && (
+              <div className="space-y-2.5 pt-1 border-t border-slate-200 dark:border-slate-800 font-mono text-[11px]">
+                {/* Rerouted Links (RSTP Failover) */}
+                {chaosCalculation.reroutedLinks.length > 0 && (
+                  <div>
+                    <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>RSTP Перенаправления: {chaosCalculation.reroutedLinks.length}</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {chaosCalculation.reroutedLinks.map(r => (
+                        <div key={r.id} className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                          <div className="flex items-center justify-between font-bold text-emerald-300">
+                            <span>{r.sourceSwitchName} ⇄ {r.targetSwitchName}</span>
+                            <span>{r.saturationPercent}%</span>
+                          </div>
+                          <div className="w-full bg-slate-800 h-1.5 rounded-full mt-1.5 overflow-hidden">
+                            <div
+                              className={`h-full ${r.isOverloaded ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                              style={{ width: `${Math.min(100, r.saturationPercent)}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                            <span>Нагрузка: {r.estimatedLoadMbps} Мбит/с</span>
+                            <span>Ёмкость: {r.capacityMbps} Мбит/с</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Isolated Switches Details */}
+                {chaosCalculation.isolatedSwitches.length > 0 && (
+                  <div>
+                    <div className="text-[10px] font-bold text-rose-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>Изолированные свитчи ({chaosCalculation.isolatedSwitches.length})</span>
+                    </div>
+                    <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
+                      {chaosCalculation.isolatedSwitches.map(sw => (
+                        <div key={sw.id} className="p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-between">
+                          <div>
+                            <span className="font-bold text-rose-300">{sw.name}</span>
+                            <span className="text-slate-400 ml-1.5">({sw.ip || 'no ip'})</span>
+                          </div>
+                          <span className={`text-[9px] px-1 py-0.2 rounded font-bold ${sw.isCrashed ? 'bg-rose-600 text-white' : 'bg-amber-600 text-slate-950'}`}>
+                            {sw.isCrashed ? 'CRASH' : 'NO UPLINK'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Isolated Servers Details */}
+                {chaosCalculation.isolatedServers.length > 0 && (
+                  <div>
+                    <div className="text-[10px] font-bold text-amber-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                      <Cpu className="w-3.5 h-3.5" />
+                      <span>Затронутые серверы ({chaosCalculation.isolatedServers.length})</span>
+                    </div>
+                    <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
+                      {chaosCalculation.isolatedServers.map(srv => (
+                        <div key={srv.id} className="p-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-between">
+                          <span className="font-bold text-amber-300">{srv.name}</span>
+                          <span className="text-slate-400 text-[10px]">{srv.ip}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Affected VLANs Details */}
+                {chaosCalculation.affectedVlanIds.length > 0 && (
+                  <div>
+                    <div className="text-[10px] font-bold text-purple-400 uppercase tracking-wider mb-1">
+                      Затронутые VLAN ({chaosCalculation.affectedVlanIds.length}):
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {chaosCalculation.affectedVlanIds.map(v => (
+                        <span key={v} className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold">
+                          VLAN {v}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* HUD Footer Actions */}
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleTriggerRandomDisaster}
+                className="flex-1 py-1.5 px-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+              >
+                <Bomb className="w-3.5 h-3.5" />
+                <span>+ Авария</span>
+              </button>
+              {(failedLinkIds.size > 0 || failedSwitchIds.size > 0) && (
+                <button
+                  type="button"
+                  onClick={handleResetChaos}
+                  className="flex-1 py-1.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer shadow-md transition-all"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Починить всё</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Selected Link Inspector Sidebar */}
         {selectedLink && (

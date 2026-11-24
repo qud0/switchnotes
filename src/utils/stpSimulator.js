@@ -181,7 +181,8 @@ export function calculateSpanningTree({
       const v = edge.neighborId;
       if (visited.has(v)) continue;
 
-      const alt = dist.get(u) + edge.link.cost;
+      const linkCost = Number(edge.link.cost) || (edge.link.speed?.includes('10G') ? 2 : 4);
+      const alt = dist.get(u) + linkCost;
       if (alt < dist.get(v)) {
         dist.set(v, alt);
         prevNode.set(v, u);
