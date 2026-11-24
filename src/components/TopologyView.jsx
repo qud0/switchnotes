@@ -39,7 +39,9 @@ import {
   Lock,
   Unlock,
   Shield,
-  Info
+  Info,
+  Crown,
+  RefreshCw
 } from 'lucide-react';
 import { VlanBadge } from './VlanBadge';
 import { checkVlanMismatch } from '../utils/vlanMismatch';
@@ -118,24 +120,32 @@ export function TopologyView({
   const [stpProtocol, setStpProtocol] = useState('rstp'); // 'rstp' | 'stp'
   const [stpDisabledLinks, setStpDisabledLinks] = useState(new Set());
 
-  // LLDP Auto-link discovery state
+  // LLDP/CDP Live Topology Auto-Stitcher state
   const [isLldpModalOpen, setIsLldpModalOpen] = useState(false);
   const [lldpLoading, setLldpLoading] = useState(false);
   const [lldpData, setLldpData] = useState(null);
   const [lldpError, setLldpError] = useState(null);
+  const [stitchMode, setStitchMode] = useState('auto');
+  const [pruneMissing, setPruneMissing] = useState(false);
+  const [stitchTab, setStitchTab] = useState('all');
+  const [selectedLinkIds, setSelectedLinkIds] = useState(new Set());
   const [applyingLinkId, setApplyingLinkId] = useState(null);
   const [isApplyingAll, setIsApplyingAll] = useState(false);
 
   // End-to-End VLAN Wizard state
   const [isVlanWizardOpen, setIsVlanWizardOpen] = useState(false);
 
-  const handleOpenLldpModal = async () => {
+  const handleOpenLldpModal = async (modeOverride) => {
+    const mode = modeOverride || stitchMode;
     setIsLldpModalOpen(true);
     setLldpLoading(true);
     setLldpError(null);
     try {
-      const data = await api.getLldpTopology({ mode: 'auto' });
+      const data = await api.scanTopologyStitch({ mode });
       setLldpData(data);
+      // Select all new links by default for convenient 1-click apply
+      const newIds = new Set((data?.diff?.newLinks || []).map(l => l.id));
+      setSelectedLinkIds(newIds);
     } catch (err) {
       setLldpError(err.message || 'Ошибка опроса LLDP топологии');
     } finally {
@@ -146,10 +156,14 @@ export function TopologyView({
   const handleApplySingleLldpLink = async (link) => {
     setApplyingLinkId(link.id);
     try {
-      await api.applyLldpLink(link);
-      toast.success('LLDP линк успешно применен');
+      const res = await api.applyTopologyStitch({
+        linkIds: [link.id],
+        pruneMissing: false,
+        scanReport: lldpData
+      });
+      toast.success('LLDP линк успешно сшит');
       if (onReloadData) await onReloadData();
-      const updated = await api.getLldpTopology({ mode: 'auto' });
+      const updated = await api.scanTopologyStitch({ mode: stitchMode });
       setLldpData(updated);
     } catch (err) {
       toast.error(`Ошибка применения линка: ${err.message}`);
@@ -160,17 +174,20 @@ export function TopologyView({
 
   const handleApplyAllLldpLinks = async () => {
     if (!lldpData?.links) return;
-    const newLinks = lldpData.links.filter(l => l.status === 'new_discovered');
-    if (newLinks.length === 0) return;
     setIsApplyingAll(true);
     try {
-      await api.applyAllLldpLinks(newLinks);
-      toast.success(`Применено новых LLDP связей: ${newLinks.length}`);
+      const res = await api.applyTopologyStitch({
+        linkIds: selectedLinkIds.size > 0 ? Array.from(selectedLinkIds) : 'all',
+        pruneMissing,
+        scanReport: lldpData
+      });
+      toast.success(`Топология сшита! Применено: ${res.appliedCount}, удалено: ${res.prunedCount}`);
       if (onReloadData) await onReloadData();
-      const updated = await api.getLldpTopology({ mode: 'auto' });
+      const updated = await api.scanTopologyStitch({ mode: stitchMode });
       setLldpData(updated);
+      setSelectedLinkIds(new Set());
     } catch (err) {
-      toast.error(`Ошибка пакетного связывания: ${err.message}`);
+      toast.error(`Ошибка сшивания топологии: ${err.message}`);
     } finally {
       setIsApplyingAll(false);
     }
@@ -1303,18 +1320,18 @@ export function TopologyView({
             <span className="hidden sm:inline">Трафик</span>
           </button>
 
-          {/* LLDP / CDP Auto-Link Discovery Button */}
+          {/* LLDP / CDP Live Topology Auto-Stitcher Button */}
           <button
-            onClick={handleOpenLldpModal}
-            className={`h-9 px-3 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
+            onClick={() => handleOpenLldpModal()}
+            className={`h-9 px-3 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap shadow-xs ${
               isLight
                 ? 'bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200'
                 : 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-400 border-purple-500/30'
             }`}
-            title="Автопоиск связей между свитчами по протоколам LLDP / CDP"
+            title="Автоматическое построение топологии L2/L3 (LLDP/CDP Auto-Stitcher, LACP, STP)"
           >
             <Radio className="w-3.5 h-3.5 text-purple-400" />
-            <span>LLDP Автолинк</span>
+            <span>LLDP Auto-Stitcher</span>
           </button>
 
           {/* End-to-End VLAN Wizard Button */}
@@ -1707,9 +1724,17 @@ export function TopologyView({
 
             const isBottleneck = showBottlenecks && bottleneckAnalysis.bandwidthBottlenecks.some(b => b.linkId === link.id);
 
-            // STP Link Simulation State
+            // STP Link Simulation & Live Discovery State
             const stpLinkState = stpSimulationActive && stpCalculation ? stpCalculation.linkStates[link.id] : null;
-            const isStpBlocked = Boolean(stpLinkState?.isBlocked);
+            const liveStpBlocked = Boolean(
+              link.isStpBlocked ||
+              (lldpData?.links || []).some(l => 
+                l.stp?.isBlocked && 
+                ((l.sourceSwitch?.id === link.sourceSwitch?.id && l.sourcePort?.id === link.sourcePort?.id) ||
+                 (l.remoteSwitch?.id === link.sourceSwitch?.id && l.remotePort?.id === link.sourcePort?.id))
+              )
+            );
+            const isStpBlocked = Boolean(stpLinkState?.isBlocked || liveStpBlocked);
             const isStpFailed = Boolean(stpLinkState?.isFailed);
             const isStpForwarding = Boolean(stpLinkState?.isForwarding);
 
@@ -3312,53 +3337,93 @@ export function TopologyView({
           </div>
         )}
 
-        {/* Modal: LLDP / CDP Auto-Link Discovery */}
+        {/* Modal: LLDP/CDP Live Topology Auto-Stitcher */}
         {isLldpModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className={`w-full max-w-2xl rounded-2xl border shadow-2xl overflow-hidden flex flex-col max-h-[85vh] ${
+            <div className={`w-full max-w-4xl rounded-2xl border shadow-2xl overflow-hidden flex flex-col max-h-[90vh] ${
               isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900 border-slate-800 text-slate-100'
             }`}>
               {/* Modal Header */}
               <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
-                    <Radio className="w-5 h-5" />
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
+                    <Radio className="w-5 h-5 animate-pulse" />
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                      Автопоиск связей LLDP / CDP
+                      LLDP / CDP Live Topology Auto-Stitcher
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-mono">
+                        SNR & MikroTik
+                      </span>
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Автоматическое обнаружение соседей и соединение портов коммутаторов
+                      Автоматическое обнаружение L2/L3 топологии, LACP агрегаций и STP Root/Standby портов
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setIsLldpModalOpen(false)}
-                  className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+
+                <div className="flex items-center gap-2">
+                  {/* Mode Selector */}
+                  <div className="hidden sm:flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs">
+                    <button
+                      onClick={() => { setStitchMode('auto'); handleOpenLldpModal('auto'); }}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                        stitchMode === 'auto'
+                          ? 'bg-purple-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Авто
+                    </button>
+                    <button
+                      onClick={() => { setStitchMode('hardware'); handleOpenLldpModal('hardware'); }}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                        stitchMode === 'hardware'
+                          ? 'bg-purple-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Live SSH
+                    </button>
+                    <button
+                      onClick={() => { setStitchMode('simulation'); handleOpenLldpModal('simulation'); }}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                        stitchMode === 'simulation'
+                          ? 'bg-purple-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Демо
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => setIsLldpModalOpen(false)}
+                    className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
               {/* Modal Body */}
               <div className="p-4 flex-1 overflow-y-auto space-y-4">
                 {lldpLoading ? (
-                  <div className="py-12 flex flex-col items-center justify-center text-center space-y-3 text-slate-400">
-                    <Radio className="w-8 h-8 text-purple-500 animate-pulse" />
+                  <div className="py-16 flex flex-col items-center justify-center text-center space-y-3 text-slate-400">
+                    <Radio className="w-10 h-10 text-purple-500 animate-pulse" />
                     <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                      Сканирование соседей по LLDP / CDP...
+                      Сканирование L2/L3 соседей по LLDP / CDP...
                     </div>
-                    <div className="text-xs max-w-xs text-slate-500">
-                      Опрос MIB-таблиц оборудования, поиск линков между коммутаторами ядра и доступа
+                    <div className="text-xs max-w-sm text-slate-500">
+                      Параллельный опрос MIB, LACP bonding групп и Spanning Tree статусов на SNR NAG и MikroTik RouterOS
                     </div>
                   </div>
                 ) : lldpError ? (
                   <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-xs flex items-center justify-between">
                     <span>{lldpError}</span>
                     <button
-                      onClick={handleOpenLldpModal}
-                      className="px-2.5 py-1 rounded bg-rose-500 text-white font-medium hover:bg-rose-600"
+                      onClick={() => handleOpenLldpModal()}
+                      className="px-2.5 py-1 rounded bg-rose-500 text-white font-medium hover:bg-rose-600 cursor-pointer"
                     >
                       Повторить
                     </button>
@@ -3366,153 +3431,315 @@ export function TopologyView({
                 ) : lldpData ? (
                   <>
                     {/* Live Hardware vs Simulation Banner */}
-                    {lldpData.isHardware ? (
-                      <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs">
-                        <Zap className="w-4 h-4 shrink-0 text-emerald-500" />
-                        <div className="min-w-0">
-                          <div className="font-semibold">Аппаратный опрос оборудования (Live SSH)</div>
-                          <div className="text-[11px] text-emerald-700 dark:text-emerald-300 opacity-90">
-                            Связи получены в реальном времени с MikroTik RouterOS (/ip neighbor) и SNR NAG (LLDP/CDP)
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl border bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-xs">
+                      <div className="flex items-center gap-2.5">
+                        {!lldpData.simulation ? (
+                          <div className="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
+                            <Zap className="w-4 h-4" />
+                          </div>
+                        ) : (
+                          <div className="p-1.5 rounded-lg bg-purple-500/15 text-purple-500 border border-purple-500/30">
+                            <Radio className="w-4 h-4" />
+                          </div>
+                        )}
+                        <div>
+                          <div className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                            {!lldpData.simulation ? 'Аппаратный опрос оборудования (Live SSH)' : 'Лабораторная симуляция топологии'}
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              (Опрошено: {lldpData.successfulPolls || 0}/{lldpData.totalPolled || 0} свитчей)
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Собраны данные соседей LLDP, LACP bonding и STP-роли портов
                           </div>
                         </div>
                       </div>
-                    ) : (
-                      <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 text-xs">
-                        <Radio className="w-4 h-4 shrink-0 text-purple-500" />
-                        <div className="min-w-0">
-                          <div className="font-semibold">Сетевая авто-топология LLDP / CDP</div>
-                          <div className="text-[11px] text-purple-700 dark:text-purple-300 opacity-90">
-                            Обнаружены межкоммутаторные соединения оптических и медных портов ядра и распределения
+
+                      {/* Root Bridge Badge */}
+                      {lldpData.rootBridgeId && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-medium text-xs self-start sm:self-auto">
+                          <Crown className="w-4 h-4 text-amber-500 shrink-0" />
+                          <div>
+                            <span className="font-bold">STP Root:</span> {
+                              switches.find(s => s.id === lldpData.rootBridgeId)?.name || lldpData.rootBridgeId
+                            }
                           </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
 
                     {/* Stats summary bar */}
-                    <div className="grid grid-cols-3 gap-3 text-center">
-                      <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-800/40 border-slate-800'}`}>
-                        <div className="text-[11px] text-slate-500">Всего найдено</div>
-                        <div className="text-base font-bold font-mono text-slate-900 dark:text-white">{lldpData.totalDiscovered || 0}</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-center">
+                      <div className={`p-2.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-800/40 border-slate-800'}`}>
+                        <div className="text-[10px] text-slate-500">Всего связей</div>
+                        <div className="text-base font-bold font-mono text-slate-900 dark:text-white">{lldpData.totalLinks || 0}</div>
                       </div>
-                      <div className={`p-3 rounded-xl border ${isLight ? 'bg-emerald-50 border-emerald-200' : 'bg-emerald-500/10 border-emerald-500/20'}`}>
-                        <div className="text-[11px] text-emerald-600 dark:text-emerald-400">Уже соединены</div>
-                        <div className="text-base font-bold font-mono text-emerald-600 dark:text-emerald-400">{lldpData.alreadyConnectedCount || 0}</div>
-                      </div>
-                      <div className={`p-3 rounded-xl border ${isLight ? 'bg-purple-50 border-purple-200' : 'bg-purple-500/10 border-purple-500/20'}`}>
-                        <div className="text-[11px] text-purple-600 dark:text-purple-400">Новые для линковки</div>
+                      <div className={`p-2.5 rounded-xl border ${isLight ? 'bg-purple-50 border-purple-200' : 'bg-purple-500/10 border-purple-500/20'}`}>
+                        <div className="text-[10px] text-purple-600 dark:text-purple-400">К сшиванию</div>
                         <div className="text-base font-bold font-mono text-purple-600 dark:text-purple-400">{lldpData.newDiscoveredCount || 0}</div>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border ${isLight ? 'bg-indigo-50 border-indigo-200' : 'bg-indigo-500/10 border-indigo-500/20'}`}>
+                        <div className="text-[10px] text-indigo-600 dark:text-indigo-400">LACP Транки</div>
+                        <div className="text-base font-bold font-mono text-indigo-600 dark:text-indigo-400">{lldpData.lagCount || 0}</div>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border ${isLight ? 'bg-amber-50 border-amber-200' : 'bg-amber-500/10 border-amber-500/20'}`}>
+                        <div className="text-[10px] text-amber-600 dark:text-amber-400">STP Standby (Блок)</div>
+                        <div className="text-base font-bold font-mono text-amber-600 dark:text-amber-400">{lldpData.stpBlockedCount || 0}</div>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border ${isLight ? 'bg-rose-50 border-rose-200' : 'bg-rose-500/10 border-rose-500/20'}`}>
+                        <div className="text-[10px] text-rose-600 dark:text-rose-400">Отсутствуют в сети</div>
+                        <div className="text-base font-bold font-mono text-rose-600 dark:text-rose-400">{lldpData.missingCount || 0}</div>
                       </div>
                     </div>
 
-                    {/* Discovered links list */}
-                    {lldpData.links && lldpData.links.length > 0 ? (
-                      <div className="space-y-2.5">
-                        {lldpData.links.map(link => {
-                          const isConnected = link.status === 'connected';
-                          const isApplying = applyingLinkId === link.id;
+                    {/* Filter Tabs */}
+                    <div className="flex items-center gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto text-xs">
+                      <button
+                        onClick={() => setStitchTab('all')}
+                        className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+                          stitchTab === 'all'
+                            ? 'bg-purple-600 text-white'
+                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        Все ({lldpData.links?.length || 0})
+                      </button>
+                      <button
+                        onClick={() => setStitchTab('new')}
+                        className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+                          stitchTab === 'new'
+                            ? 'bg-purple-600 text-white'
+                            : 'text-purple-600 dark:text-purple-400 hover:bg-purple-500/10'
+                        }`}
+                      >
+                        <span>Новые для сшивания</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-500/20">
+                          {lldpData.newDiscoveredCount || 0}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setStitchTab('lag')}
+                        className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+                          stitchTab === 'lag'
+                            ? 'bg-indigo-600 text-white'
+                            : 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10'
+                        }`}
+                      >
+                        <span>LACP Транки</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-500/20">
+                          {lldpData.lagCount || 0}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setStitchTab('stp')}
+                        className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+                          stitchTab === 'stp'
+                            ? 'bg-amber-600 text-white'
+                            : 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
+                        }`}
+                      >
+                        <span>STP Блокировки</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20">
+                          {lldpData.stpBlockedCount || 0}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setStitchTab('missing')}
+                        className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+                          stitchTab === 'missing'
+                            ? 'bg-rose-600 text-white'
+                            : 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/10'
+                        }`}
+                      >
+                        <span>Отсутствуют в сети</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500/20">
+                          {lldpData.missingCount || 0}
+                        </span>
+                      </button>
+                    </div>
 
-                          return (
-                            <div
-                              key={link.id}
-                              className={`p-3.5 rounded-xl border transition-all ${
-                                isConnected
-                                  ? (isLight ? 'bg-slate-50 border-slate-200 opacity-80' : 'bg-slate-900/40 border-slate-800 opacity-80')
-                                  : (isLight ? 'bg-purple-50/40 border-purple-200 shadow-xs' : 'bg-purple-950/20 border-purple-500/30 shadow-xs')
-                              }`}
-                            >
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                {/* Left: Source Switch & Port */}
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500 border border-blue-500/20 shrink-0">
-                                    <Server className="w-4 h-4" />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <div className="font-bold text-xs font-mono truncate text-slate-900 dark:text-white">
-                                      {link.sourceSwitch?.name}
-                                    </div>
-                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                                      {link.sourcePort?.name || `Порт ${link.sourcePort?.number}`}
-                                    </div>
-                                  </div>
-                                </div>
+                    {/* Discovered & Diff Links List */}
+                    {(() => {
+                      let displayLinks = lldpData.links || [];
+                      if (stitchTab === 'new') {
+                        displayLinks = displayLinks.filter(l => l.status === 'NEW_LINK' || l.status === 'new_discovered');
+                      } else if (stitchTab === 'lag') {
+                        displayLinks = displayLinks.filter(l => l.isLag);
+                      } else if (stitchTab === 'stp') {
+                        displayLinks = displayLinks.filter(l => l.stp?.isBlocked);
+                      } else if (stitchTab === 'missing') {
+                        displayLinks = lldpData.diff?.missingLinks || [];
+                      }
 
-                                {/* Center: Protocol & Speed */}
-                                <div className="flex flex-col items-center justify-center shrink-0">
-                                  <div className="flex items-center gap-1.5 text-xs text-purple-500 font-semibold font-mono">
-                                    <span>{link.speed || '1G'}</span>
-                                    <ArrowRight className="w-3.5 h-3.5 text-purple-400" />
+                      if (displayLinks.length === 0) {
+                        return (
+                          <div className="py-12 text-center text-slate-400 text-xs">
+                            В этой категории нет связей.
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="space-y-2">
+                          {displayLinks.map(link => {
+                            const isNew = link.status === 'NEW_LINK' || link.status === 'new_discovered';
+                            const isMissing = link.status === 'MISSING_LINK';
+                            const isBlocked = Boolean(link.stp?.isBlocked);
+                            const isSelected = selectedLinkIds.has(link.id);
+                            const isApplying = applyingLinkId === link.id;
+
+                            return (
+                              <div
+                                key={link.id}
+                                className={`p-3 rounded-xl border transition-all ${
+                                  isMissing
+                                    ? (isLight ? 'bg-rose-50/50 border-rose-200' : 'bg-rose-950/20 border-rose-500/30')
+                                    : isBlocked
+                                    ? (isLight ? 'bg-amber-50/50 border-amber-200' : 'bg-amber-950/20 border-amber-500/30')
+                                    : isNew
+                                    ? (isLight ? 'bg-purple-50/40 border-purple-200 shadow-xs' : 'bg-purple-950/20 border-purple-500/30 shadow-xs')
+                                    : (isLight ? 'bg-slate-50 border-slate-200 opacity-85' : 'bg-slate-900/40 border-slate-800 opacity-85')
+                                }`}
+                              >
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                  {/* Checkbox (if new) */}
+                                  {isNew && (
+                                    <div className="flex items-center shrink-0">
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={(e) => {
+                                          setSelectedLinkIds(prev => {
+                                            const next = new Set(prev);
+                                            if (e.target.checked) next.add(link.id);
+                                            else next.delete(link.id);
+                                            return next;
+                                          });
+                                        }}
+                                        className="w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                                      />
+                                    </div>
+                                  )}
+
+                                  {/* Left: Source Switch & Port */}
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500 border border-blue-500/20 shrink-0">
+                                      <Server className="w-4 h-4" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="font-bold text-xs font-mono truncate text-slate-900 dark:text-white">
+                                        {link.sourceSwitch?.name}
+                                      </div>
+                                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1.5">
+                                        <span>{link.sourcePort?.name || `Порт ${link.sourcePort?.number}`}</span>
+                                        {link.stp?.sourceRole && (
+                                          <span className="text-[9px] px-1 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-mono uppercase">
+                                            {link.stp.sourceRole}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-1 mt-0.5">
-                                    <span className="text-[10px] text-slate-400 font-mono">
-                                      {link.protocol}
-                                    </span>
-                                    {link.bidirectional && (
-                                      <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-500 border border-emerald-500/20 font-mono font-medium" title="Двустороннее подтверждение линка (Full Mesh)">
-                                        ✓✓ Mesh
+
+                                  {/* Center: Bandwidth, LACP & STP Status */}
+                                  <div className="flex flex-col items-center justify-center shrink-0">
+                                    <div className="flex items-center gap-1.5 text-xs font-bold font-mono text-purple-500">
+                                      <span>{link.capacityMbps ? `${link.capacityMbps >= 1000 ? link.capacityMbps / 1000 + 'G' : link.capacityMbps + 'M'}` : (link.speed || '1G')}</span>
+                                      <ArrowRight className="w-3.5 h-3.5 text-purple-400" />
+                                    </div>
+                                    <div className="flex items-center gap-1 mt-0.5 flex-wrap justify-center">
+                                      {link.isLag && (
+                                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-500 border border-indigo-500/30 font-mono font-bold" title="LACP Trunk Aggregation">
+                                          LACP ({link.memberCount || 2}x)
+                                        </span>
+                                      )}
+                                      {isBlocked && (
+                                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-500 border border-amber-500/30 font-mono font-bold" title="Spanning Tree Standby (Discarding/Alternate)">
+                                          STP BLK
+                                        </span>
+                                      )}
+                                      {link.bidirectional && (
+                                        <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-500 border border-emerald-500/20 font-mono font-medium" title="Двустороннее подтверждение линка (Full Mesh)">
+                                          Mesh
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Right: Remote Switch & Port */}
+                                  <div className="flex items-center gap-2 min-w-0 sm:justify-end">
+                                    <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 shrink-0 sm:order-2">
+                                      <Server className="w-4 h-4" />
+                                    </div>
+                                    <div className="min-w-0 sm:text-right">
+                                      <div className="font-bold text-xs font-mono truncate text-slate-900 dark:text-white">
+                                        {link.remoteSwitch?.name || 'Внешнее устройство'}
+                                      </div>
+                                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                                        {link.remotePort?.name || `Порт ${link.remotePort?.number}`}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Action / Status Pill */}
+                                  <div className="sm:pl-3 shrink-0 self-end sm:self-center">
+                                    {isMissing ? (
+                                      <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 text-xs font-medium flex items-center gap-1">
+                                        <AlertTriangle className="w-3.5 h-3.5" />
+                                        <span>Нет в кабеле</span>
+                                      </span>
+                                    ) : isNew ? (
+                                      <button
+                                        onClick={() => handleApplySingleLldpLink(link)}
+                                        disabled={isApplying || isApplyingAll}
+                                        className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                                      >
+                                        {isApplying ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <LinkIcon className="w-3.5 h-3.5" />}
+                                        <span>Сшить</span>
+                                      </button>
+                                    ) : (
+                                      <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-medium flex items-center gap-1">
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        <span>Соединен</span>
                                       </span>
                                     )}
                                   </div>
                                 </div>
-
-                                {/* Right: Remote Switch & Port */}
-                                <div className="flex items-center gap-2 min-w-0 sm:justify-end">
-                                  <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 shrink-0 sm:order-2">
-                                    <Server className="w-4 h-4" />
-                                  </div>
-                                  <div className="min-w-0 sm:text-right">
-                                    <div className="font-bold text-xs font-mono truncate text-slate-900 dark:text-white">
-                                      {link.remoteSwitch?.name}
-                                    </div>
-                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                                      {link.remotePort?.name || `Порт ${link.remotePort?.number}`}
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Action */}
-                                <div className="sm:pl-3 shrink-0 self-end sm:self-center">
-                                  {isConnected ? (
-                                    <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-medium flex items-center gap-1">
-                                      <CheckCircle2 className="w-3.5 h-3.5" />
-                                      <span>Соединен</span>
-                                    </span>
-                                  ) : (
-                                    <button
-                                      onClick={() => handleApplySingleLldpLink(link)}
-                                      disabled={isApplying || isApplyingAll}
-                                      className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-medium flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
-                                    >
-                                      {isApplying ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <LinkIcon className="w-3.5 h-3.5" />}
-                                      <span>Связать</span>
-                                    </button>
-                                  )}
-                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="py-8 text-center text-slate-400 text-xs">
-                        Соседей по протоколу LLDP не обнаружено.
-                      </div>
-                    )}
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </>
                 ) : null}
               </div>
 
               {/* Modal Footer */}
-              <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
-                <button
-                  onClick={handleOpenLldpModal}
-                  disabled={lldpLoading}
-                  className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-medium flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Radio className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Повторить опрос</span>
-                </button>
+              <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <button
+                    onClick={() => handleOpenLldpModal()}
+                    disabled={lldpLoading}
+                    className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-medium flex items-center gap-1.5 cursor-pointer shrink-0"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-purple-400 ${lldpLoading ? 'animate-spin' : ''}`} />
+                    <span>Повторить опрос</span>
+                  </button>
 
-                <div className="flex items-center gap-2">
+                  {/* Prune Missing Checkbox */}
+                  <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={pruneMissing}
+                      onChange={(e) => setPruneMissing(e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                    />
+                    <span>Удалить отсутствующие в кабеле линки</span>
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2 self-end sm:self-auto">
                   <button
                     onClick={() => setIsLldpModalOpen(false)}
                     className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-medium cursor-pointer"
@@ -3524,10 +3751,14 @@ export function TopologyView({
                     <button
                       onClick={handleApplyAllLldpLinks}
                       disabled={isApplyingAll || lldpLoading}
-                      className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-purple-600/20 cursor-pointer"
+                      className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-purple-600/25 cursor-pointer transition-all"
                     >
                       {isApplyingAll ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                      <span>Связать все ({lldpData.newDiscoveredCount})</span>
+                      <span>
+                        {selectedLinkIds.size > 0 && selectedLinkIds.size < lldpData.newDiscoveredCount
+                          ? `Сшить выбранные (${selectedLinkIds.size})`
+                          : `Сшить всю топологию (${lldpData.newDiscoveredCount})`}
+                      </span>
                     </button>
                   )}
                 </div>

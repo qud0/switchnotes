@@ -1029,6 +1029,32 @@ export const api = {
     return res.json();
   },
 
+  scanTopologyStitch: async (options = {}) => {
+    const res = await fetch(`${API_BASE}/topology/stitch/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка сканирования топологии LLDP/CDP');
+    }
+    return res.json();
+  },
+
+  applyTopologyStitch: async (payload = {}) => {
+    const res = await fetch(`${API_BASE}/topology/stitch/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка применения топологии Auto-Stitcher');
+    }
+    return res.json();
+  },
+
   generateBatchPortScript: async (switchId, params) => {
     const res = await fetch(`${API_BASE}/switches/${switchId}/ports/provision-script`, {
       method: 'POST',
