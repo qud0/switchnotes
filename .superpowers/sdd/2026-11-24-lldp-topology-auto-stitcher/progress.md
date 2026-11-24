@@ -3,7 +3,7 @@
 ## Tasks
 - [x] Task 1: Parser Engine for SNR-OS and MikroTik (LLDP, LACP, STP)
 - [x] Task 2: Topology Correlation, LACP Bundling & Diff Engine
-- [ ] Task 3: Stitch Service, Live SSH Scan Orchestrator & Storage Apply
+- [x] Task 3: Stitch Service, Live SSH Scan Orchestrator & Storage Apply
 - [ ] Task 4: REST API Endpoints in server/index.js
 - [ ] Task 5: Frontend UI — Modal, Diff View & Auto-Stitch Controls
 - [ ] Task 6: Full Verification & Master Push
