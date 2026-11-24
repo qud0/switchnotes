@@ -36,6 +36,7 @@ export function isOpticalPort(port) {
  * @returns {Array<object>}
  */
 export function correlateOpticalSpans({ switches = [], portDdmMap = new Map() }) {
+  const ddmMap = portDdmMap instanceof Map ? portDdmMap : new Map(Object.entries(portDdmMap || {}));
   const switchMap = new Map();
   switches.forEach(sw => switchMap.set(sw.id, sw));
 
@@ -60,8 +61,8 @@ export function correlateOpticalSpans({ switches = [], portDdmMap = new Map() })
       if (spansMap.has(spanKey)) continue;
 
       // Read DDM telemetry for both endpoints
-      const ddmA = portDdmMap.get(keyA) || { txPowerDbm: -2.0, rxPowerDbm: -6.0, biasCurrentMa: 25, temperatureC: 38 };
-      const ddmB = portDdmMap.get(keyB) || { txPowerDbm: -2.0, rxPowerDbm: -6.0, biasCurrentMa: 25, temperatureC: 38 };
+      const ddmA = ddmMap.get(keyA) || { txPowerDbm: -2.0, rxPowerDbm: -6.0, biasCurrentMa: 25, temperatureC: 38 };
+      const ddmB = ddmMap.get(keyB) || { txPowerDbm: -2.0, rxPowerDbm: -6.0, biasCurrentMa: 25, temperatureC: 38 };
 
       const txA = typeof ddmA.txPowerDbm === 'number' ? ddmA.txPowerDbm : -2.0;
       const rxA = typeof ddmA.rxPowerDbm === 'number' ? ddmA.rxPowerDbm : -6.0;
@@ -172,3 +173,18 @@ export function detectSpanAsymmetry(span) {
     recommendation: `Высокая асимметрия затухания (${deltaDb} dB) указывает на дефект одиночной жилы оптоволоконного кабеля в направлении ${faultyDirection}. Проверьте патч-корд на микроизгиб и очистите оптические коннекторы LC/UPC.`
   };
 }
+
+/**
+ * Calculates optical margin before sensitivity threshold
+ * @param {object} span
+ * @returns {{ minMarginDb: number, forwardMarginDb: number, reverseMarginDb: number }}
+ */
+export function calculateSpanMargin(span) {
+  if (!span) return { minMarginDb: 0, forwardMarginDb: 0, reverseMarginDb: 0 };
+  return {
+    minMarginDb: span.minMarginDb ?? 0,
+    forwardMarginDb: span.forwardMarginDb ?? 0,
+    reverseMarginDb: span.reverseMarginDb ?? 0
+  };
+}
+
