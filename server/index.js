@@ -38,6 +38,12 @@ import {
   getRolloutStatus,
   abortRollout
 } from './firmwareRolloutService.js';
+import {
+  recordDdmSnapshot,
+  getPortAnalysis,
+  getFleetOpticsSummary,
+  pollFleetOptics
+} from './opticsHealthService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -344,6 +350,9 @@ app.get('/api/switches/:id/ports/:portId/ddm', requireRole('engineer'), async (r
       mode: mode || 'auto',
       faultSimulation: faultSimulation || 'none'
     });
+    if (result) {
+      recordDdmSnapshot(storage, { switchId: req.params.id, portId: req.params.portId, ddmReport: result });
+    }
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -359,6 +368,11 @@ app.get('/api/switches/:id/ddm', requireRole('engineer'), async (req, res) => {
       switchId: req.params.id,
       mode: mode || 'auto'
     });
+    if (result && Array.isArray(result.ports)) {
+      result.ports.forEach(p => {
+        recordDdmSnapshot(storage, { switchId: req.params.id, portId: p.portId, ddmReport: p });
+      });
+    }
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1996,6 +2010,55 @@ app.post('/api/firmware/rollout/abort/:id', requireRole('engineer'), (req, res) 
   try {
     const result = abortRollout(req.params.id);
     res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- OPTICS HEALTH & DEGRADATION AI API ---
+
+// 1. Fleet optics summary
+app.get('/api/optics/fleet-summary', (req, res) => {
+  try {
+    const summary = getFleetOpticsSummary(storage);
+    res.json({ success: true, summary });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Single port degradation & predictive analysis
+app.get('/api/optics/switches/:switchId/ports/:portId/analysis', (req, res) => {
+  try {
+    const analysis = getPortAnalysis(storage, {
+      switchId: req.params.switchId,
+      portId: req.params.portId
+    });
+    res.json({ success: true, analysis });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Correlated inter-switch optical spans
+app.get('/api/optics/spans', (req, res) => {
+  try {
+    const summary = getFleetOpticsSummary(storage);
+    res.json({ success: true, spans: summary.spans });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Poll fleet optics on-demand
+app.post('/api/optics/poll-fleet', requireRole('engineer'), async (req, res) => {
+  try {
+    const result = await pollFleetOptics(storage);
+    res.json({
+      success: true,
+      message: `Оптическая телеметрия парка обновлена (${result.polledCount} портов)`,
+      ...result
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

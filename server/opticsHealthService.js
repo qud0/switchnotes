@@ -295,3 +295,61 @@ export function getFleetOpticsSummary(storage, portDdmMap = {}) {
     timestamp: Date.now()
   };
 }
+
+/**
+ * Опрос всей оптической инфраструктуры парка с сохранением снимков DDM.
+ */
+export async function pollFleetOptics(storage) {
+  const switches = storage.data?.switches || [];
+  let polledCount = 0;
+
+  for (const sw of switches) {
+    for (const port of (sw.ports || [])) {
+      if (isOpticalPort(port)) {
+        const key = `${sw.id}:${port.id}`;
+        const existing = storage.data?.opticsHistory?.[key];
+        let ddmReport;
+
+        if (existing && existing.length > 0) {
+          const last = existing[existing.length - 1];
+          ddmReport = {
+            timestamp: Date.now(),
+            telemetry: {
+              rxPowerDbm: last.rxDbm,
+              txPowerDbm: last.txDbm,
+              biasCurrentMa: last.biasCurrentMa,
+              temperatureC: last.temperatureC,
+              voltageV: last.voltageV
+            }
+          };
+        } else {
+          const initialHistory = generateSyntheticOpticsHistory(port, 'STABLE');
+          if (!storage.data.opticsHistory) {
+            storage.data.opticsHistory = {};
+          }
+          storage.data.opticsHistory[key] = initialHistory;
+          const last = initialHistory[initialHistory.length - 1];
+          ddmReport = {
+            timestamp: Date.now(),
+            telemetry: {
+              rxPowerDbm: last.rxDbm,
+              txPowerDbm: last.txDbm,
+              biasCurrentMa: last.biasCurrentMa,
+              temperatureC: last.temperatureC,
+              voltageV: last.voltageV
+            }
+          };
+        }
+
+        recordDdmSnapshot(storage, { switchId: sw.id, portId: port.id, ddmReport });
+        polledCount++;
+      }
+    }
+  }
+
+  return {
+    polledCount,
+    summary: getFleetOpticsSummary(storage)
+  };
+}
+
