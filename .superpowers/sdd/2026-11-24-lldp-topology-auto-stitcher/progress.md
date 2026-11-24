@@ -1,0 +1,12 @@
+# SDD ledger — plan: docs/superpowers/plans/2026-11-24-lldp-topology-auto-stitcher.md
+
+## Tasks
+- [x] Task 1: Parser Engine for SNR-OS and MikroTik (LLDP, LACP, STP)
+- [ ] Task 2: Topology Correlation, LACP Bundling & Diff Engine
+- [ ] Task 3: Stitch Service, Live SSH Scan Orchestrator & Storage Apply
+- [ ] Task 4: REST API Endpoints in server/index.js
+- [ ] Task 5: Frontend UI — Modal, Diff View & Auto-Stitch Controls
+- [ ] Task 6: Full Verification & Master Push
+
+## Rulings
+- None yet.
