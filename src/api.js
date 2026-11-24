@@ -1457,5 +1457,53 @@ export const api = {
       throw new Error(err.error || 'Ошибка опроса оптической телеметрии');
     }
     return res.json();
+  },
+
+  // ==================== LIVE WEB-PCAP (WIRESHARK-IN-BROWSER) ====================
+  startPortPcap: async (switchId, portId, filter = '') => {
+    const res = await fetch(`${API_BASE}/pcap/switches/${switchId}/ports/${portId}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filter })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка запуска захвата пакетов');
+    }
+    return res.json();
+  },
+
+  stopPcapSession: async (sessionId) => {
+    const res = await fetch(`${API_BASE}/pcap/sessions/${sessionId}/stop`, {
+      method: 'POST'
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка остановки сессии захвата');
+    }
+    return res.json();
+  },
+
+  getPcapSessionStatus: async (sessionId) => {
+    const res = await fetch(`${API_BASE}/pcap/sessions/${sessionId}/status`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка статуса захвата');
+    }
+    return res.json();
+  },
+
+  getPcapDownloadUrl: (sessionId) => {
+    return `${API_BASE}/pcap/sessions/${sessionId}/download`;
+  },
+
+  // ==================== L1–L3 X-RAY CIRCUIT TRACER ====================
+  getCircuitTrace: async (switchId, portId) => {
+    const res = await fetch(`${API_BASE}/circuit-trace/switches/${switchId}/ports/${portId}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка построения сквозного маршрута');
+    }
+    return res.json();
   }
 };

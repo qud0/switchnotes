@@ -5,6 +5,7 @@ import { PortTable } from './PortTable';
 import { BatchPortActionBar } from './BatchPortActionBar';
 import { PortProfileModal } from './PortProfileModal';
 import { SfpDdmModal } from './SfpDdmModal';
+import DockableConsole from './DockableConsole';
 import { checkVlanMismatch } from '../utils/vlanMismatch';
 import {
   Server,
@@ -227,6 +228,8 @@ export function SwitchFaceplate({
   const [trafficHistory, setTrafficHistory] = useState({}); // portNumber -> [{ time, rxMbps, txMbps }]
   const [selectedChartPort, setSelectedChartPort] = useState(null); // port object for deep inspection modal
   const [selectedDdmPort, setSelectedDdmPort] = useState(null); // port object for optical DDM modal
+  const [isDockConsoleOpen, setIsDockConsoleOpen] = useState(false);
+  const [dockConsolePort, setDockConsolePort] = useState(null);
 
   // Manual & Auto SNMP Polling
   const handlePollTelemetry = async () => {
@@ -1159,6 +1162,22 @@ export function SwitchFaceplate({
                 <span>{showCableTags ? 'Скрыть бирки' : 'Бирки кабелей'}</span>
               </button>
 
+              {/* Dockable Live PCAP & Circuit X-Ray Console Toggle */}
+              <button
+                onClick={() => setIsDockConsoleOpen(!isDockConsoleOpen)}
+                className={`h-9 px-3 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+                  isDockConsoleOpen
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-500/20'
+                    : (isLight
+                        ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700')
+                }`}
+                title="Встроенная консоль сетевого анализатора Live PCAP (Wireshark) и сквозного L1–L3 X-Ray тракта"
+              >
+                <Radio className={`w-3.5 h-3.5 ${isDockConsoleOpen ? 'animate-pulse text-emerald-300' : 'text-blue-400'}`} />
+                <span>{isDockConsoleOpen ? 'Консоль PCAP: Вкл' : '🦈 Live PCAP & X-Ray'}</span>
+              </button>
+
             </div>
           </div>
         </div>
@@ -1314,7 +1333,7 @@ export function SwitchFaceplate({
                               vlanMap={vlanMap}
                               isSelected={selectedPortIds.includes(port.id)}
                               onSelect={handleToggleSelect}
-                              onOpenDetails={(p) => onOpenPortDrawer([p])}
+                              onOpenDetails={(p) => { setDockConsolePort(p); onOpenPortDrawer([p]); }}
                               highlightVlanId={highlightVlanId}
                               selectionMode={selectionMode}
                               showCableTags={showCableTags}
@@ -1348,7 +1367,7 @@ export function SwitchFaceplate({
                                 vlanMap={vlanMap}
                                 isSelected={selectedPortIds.includes(port.id)}
                                 onSelect={handleToggleSelect}
-                                onOpenDetails={(p) => onOpenPortDrawer([p])}
+                                onOpenDetails={(p) => { setDockConsolePort(p); onOpenPortDrawer([p]); }}
                                 highlightVlanId={highlightVlanId}
                                 selectionMode={selectionMode}
                                 showCableTags={showCableTags}
@@ -1393,7 +1412,7 @@ export function SwitchFaceplate({
                             vlanMap={vlanMap}
                             isSelected={selectedPortIds.includes(port.id)}
                             onSelect={handleToggleSelect}
-                            onOpenDetails={(p) => onOpenPortDrawer([p])}
+                            onOpenDetails={(p) => { setDockConsolePort(p); onOpenPortDrawer([p]); }}
                             highlightVlanId={highlightVlanId}
                             selectionMode={selectionMode}
                             showCableTags={showCableTags}
@@ -1427,7 +1446,7 @@ export function SwitchFaceplate({
                               vlanMap={vlanMap}
                               isSelected={selectedPortIds.includes(port.id)}
                               onSelect={handleToggleSelect}
-                              onOpenDetails={(p) => onOpenPortDrawer([p])}
+                              onOpenDetails={(p) => { setDockConsolePort(p); onOpenPortDrawer([p]); }}
                               highlightVlanId={highlightVlanId}
                               selectionMode={selectionMode}
                               showCableTags={showCableTags}
@@ -1693,6 +1712,15 @@ export function SwitchFaceplate({
         onClose={() => setSelectedDdmPort(null)}
         switchData={switchData}
         port={selectedDdmPort}
+        theme={theme}
+      />
+
+      {/* Dockable Network Diagnostics Console (Live Web-PCAP & L1–L3 X-Ray) */}
+      <DockableConsole
+        isOpen={isDockConsoleOpen}
+        onClose={() => setIsDockConsoleOpen(false)}
+        switchId={switchData?.id}
+        port={dockConsolePort || ports[0]}
         theme={theme}
       />
     </div>

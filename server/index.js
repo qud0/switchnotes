@@ -44,6 +44,10 @@ import {
   getFleetOpticsSummary,
   pollFleetOptics
 } from './opticsHealthService.js';
+import { WebSocketServer } from 'ws';
+import url from 'url';
+import { packetCaptureManager } from './packetCaptureService.js';
+import { tracePortCircuit } from './circuitTracerService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2162,6 +2166,105 @@ app.post('/api/switches/:id/ports/provision-apply', requireRole('admin'), async 
   }
 });
 
+
+// ==================== LIVE WEB-PCAP (WIRESHARK-IN-BROWSER) API ====================
+// Start PCAP capture session for a switch port
+app.post('/api/pcap/switches/:switchId/ports/:portId/start', requireRole('engineer'), (req, res) => {
+  try {
+    const { switchId, portId } = req.params;
+    const sw = storage.getSwitchById(switchId) || 
+               (storage.getSwitches ? storage.getSwitches().find(s => s.id === switchId || s.name === switchId) : null);
+    if (!sw) return res.status(404).json({ error: 'Коммутатор не найден' });
+    const port = (sw.ports || []).find(p => 
+      String(p.id) === String(portId) || 
+      String(p.number) === String(portId) ||
+      String(p.portNum) === String(portId) ||
+      p.id === `p${portId}` ||
+      p.id === `p-${portId}`
+    );
+    if (!port) return res.status(404).json({ error: 'Порт не найден' });
+
+    const portNumber = Number(port.number || port.portNum) || 1;
+    const vlanId = Number(port.pvid || port.vlanId) || 1;
+    const session = packetCaptureManager.startSession(switchId, port.id, {
+      portInfo: {
+        portNum: portNumber,
+        portName: port.name || `ether${portNumber}`,
+        vlanId,
+        deviceIp: port.deviceIp || (sw.ip ? sw.ip.replace(/\.\d+$/, `.${10 + portNumber}`) : `192.168.${vlanId}.${10 + portNumber}`),
+        deviceMac: port.mac || `b4:96:91:0a:${String(vlanId).padStart(2, '0')}:${String(portNumber).padStart(2, '0')}`,
+        connectedDevice: port.connectedTo || port.device || 'Host'
+      },
+      filter: req.body?.filter || ''
+    });
+
+    packetCaptureManager.startSyntheticStream(session.id, 700);
+
+    res.json({
+      success: true,
+      sessionId: session.id,
+      status: session.status,
+      portNum: port.portNum
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Stop PCAP capture session
+app.post('/api/pcap/sessions/:sessionId/stop', requireRole('engineer'), (req, res) => {
+  try {
+    const ok = packetCaptureManager.stopSession(req.params.sessionId);
+    res.json({ success: ok, status: 'stopped' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Status of PCAP session
+app.get('/api/pcap/sessions/:sessionId/status', (req, res) => {
+  try {
+    const session = packetCaptureManager.getSession(req.params.sessionId);
+    if (!session) return res.status(404).json({ error: 'Сессия не найдена' });
+    res.json({
+      id: session.id,
+      switchId: session.switchId,
+      portId: session.portId,
+      status: session.status,
+      packetCount: session.packetCount,
+      durationSeconds: Math.floor((Date.now() - session.startTime) / 1000)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Download standard binary Libpcap 2.4 file
+app.get('/api/pcap/sessions/:sessionId/download', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const pcapBuffer = packetCaptureManager.getPcapDownloadBuffer(sessionId);
+    const filename = `capture_${sessionId.replace(/[^a-zA-Z0-9_-]/g, '_')}.pcap`;
+
+    res.setHeader('Content-Type', 'application/vnd.tcpdump.pcap');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pcapBuffer.length);
+    res.end(pcapBuffer);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==================== END-TO-END L1–L3 CIRCUIT TRACER API ====================
+app.get('/api/circuit-trace/switches/:switchId/ports/:portId', (req, res) => {
+  try {
+    const trace = tracePortCircuit(storage, req.params.switchId, req.params.portId);
+    res.json({ success: true, trace });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Serve frontend build if exists
 const distPath = path.join(__dirname, '..', 'dist');
 app.use(express.static(distPath));
@@ -2176,6 +2279,25 @@ app.get('*', (req, res) => {
 
 const server = http.createServer(app);
 initWebSshServer(server, storage);
+
+// WebSocket server for Live Web-PCAP
+const pcapWss = new WebSocketServer({ noServer: true });
+server.on('upgrade', (request, socket, head) => {
+  const parsedUrl = url.parse(request.url, true);
+  if (parsedUrl.pathname === '/ws/pcap') {
+    pcapWss.handleUpgrade(request, socket, head, (ws) => {
+      pcapWss.emit('connection', ws, request);
+    });
+  }
+});
+
+pcapWss.on('connection', (ws, req) => {
+  const parsedUrl = url.parse(req.url, true);
+  const sessionId = parsedUrl.query?.sessionId;
+  if (sessionId) {
+    packetCaptureManager.addClient(sessionId, ws);
+  }
+});
 
 server.listen(PORT, () => {
   console.log(`[SwitchBook Server] Сервер запущен на http://localhost:${PORT}`);
