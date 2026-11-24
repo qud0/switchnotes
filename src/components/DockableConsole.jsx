@@ -1,25 +1,30 @@
 import React, { useState } from 'react';
 import { 
   Terminal, Activity, ChevronDown, ChevronUp, Maximize2, 
-  Minimize2, X, Radio, Layers, Wrench
+  Minimize2, X, Radio, Layers, Wrench, Bot
 } from 'lucide-react';
 import LiveWebPcap from './LiveWebPcap';
 import CircuitXRayTab from './CircuitXRayTab';
+import WebSshTerminalTab from './WebSshTerminalTab';
+import AiCopilotTab from './AiCopilotTab';
 
 export default function DockableConsole({
   isOpen,
   onClose,
+  switchData,
   switchId,
   port,
   theme = 'dark'
 }) {
-  const [activeTab, setActiveTab] = useState('pcap'); // 'pcap' | 'xray'
+  const [activeTab, setActiveTab] = useState('pcap'); // 'pcap' | 'xray' | 'ssh' | 'copilot'
   const [isMinimized, setIsMinimized] = useState(false);
   const [heightMode, setHeightMode] = useState('medium'); // 'compact' (240px) | 'medium' (380px) | 'expanded' (560px)
 
   if (!isOpen || !port) return null;
 
   const isLight = theme === 'light';
+  const effectiveSwitchData = switchData || { id: switchId, name: switchId };
+  const effectiveSwitchId = effectiveSwitchData?.id || switchId;
 
   const getHeightClass = () => {
     if (isMinimized) return 'h-10';
@@ -53,7 +58,7 @@ export default function DockableConsole({
         <div className="flex items-center gap-1.5">
           <div className="flex items-center gap-2 mr-3 font-sans font-bold text-xs text-blue-400">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Инспектор порта {port.name || `Port ${port.portNum}`}</span>
+            <span>Инспектор порта {port.name || `Port ${port.number || port.portNum}`}</span>
           </div>
 
           <button
@@ -78,6 +83,30 @@ export default function DockableConsole({
           >
             <Activity className="w-3.5 h-3.5" />
             <span>L1–L3 X-Ray Тракт</span>
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('ssh'); setIsMinimized(false); }}
+            className={`px-3 py-1 rounded-lg font-sans text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+              activeTab === 'ssh' && !isMinimized
+                ? (isLight ? 'bg-white text-blue-700 shadow-sm' : 'bg-blue-600 text-white shadow-md shadow-blue-500/20')
+                : (isLight ? 'text-slate-600 hover:bg-slate-200/70' : 'text-slate-400 hover:bg-slate-800')
+            }`}
+          >
+            <Terminal className="w-3.5 h-3.5" />
+            <span>Web-SSH CLI</span>
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('copilot'); setIsMinimized(false); }}
+            className={`px-3 py-1 rounded-lg font-sans text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+              activeTab === 'copilot' && !isMinimized
+                ? (isLight ? 'bg-white text-purple-700 shadow-sm' : 'bg-purple-600 text-white shadow-md shadow-purple-500/20')
+                : (isLight ? 'text-slate-600 hover:bg-slate-200/70' : 'text-slate-400 hover:bg-slate-800')
+            }`}
+          >
+            <Bot className="w-3.5 h-3.5" />
+            <span>AI Copilot</span>
           </button>
         </div>
 
@@ -114,15 +143,26 @@ export default function DockableConsole({
         <div className="flex-1 overflow-hidden">
           {activeTab === 'pcap' ? (
             <LiveWebPcap 
-              switchId={switchId} 
+              switchId={effectiveSwitchId} 
               port={port} 
               theme={theme} 
             />
-          ) : (
+          ) : activeTab === 'xray' ? (
             <CircuitXRayTab 
-              switchId={switchId} 
+              switchId={effectiveSwitchId} 
               port={port} 
               theme={theme} 
+            />
+          ) : activeTab === 'ssh' ? (
+            <WebSshTerminalTab
+              switchData={effectiveSwitchData}
+              theme={theme}
+            />
+          ) : (
+            <AiCopilotTab
+              switchId={effectiveSwitchId}
+              port={port}
+              theme={theme}
             />
           )}
         </div>

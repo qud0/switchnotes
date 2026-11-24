@@ -21,6 +21,7 @@ export function PortItem({
   showSparklines = false,
   trafficHistory = [],
   onOpenChart = null,
+  isTimeMachineDiff = false,
   theme = 'dark',
   faceplateTheme = 'noc',
   faceplateFont = 'mono'
@@ -30,18 +31,24 @@ export function PortItem({
     ? 'font-sans font-bold text-[11px] tracking-tight'
     : faceplateFont === 'tech'
     ? 'font-mono font-black text-[10px] tracking-wider uppercase'
+    : faceplateFont === 'code'
+    ? 'font-mono font-semibold text-[10.5px] tracking-tight'
     : 'font-mono font-bold text-[10px]';
 
   const badgeFont = faceplateFont === 'sans'
     ? 'font-sans font-bold tracking-tight text-[9px]'
     : faceplateFont === 'tech'
     ? 'font-mono font-black uppercase tracking-wider text-[8px]'
+    : faceplateFont === 'code'
+    ? 'font-mono font-semibold text-[8.5px]'
     : 'font-mono font-bold text-[9px]';
 
   const tagFont = faceplateFont === 'sans'
     ? 'font-sans font-semibold text-[8px] tracking-tight'
     : faceplateFont === 'tech'
     ? 'font-mono font-black uppercase tracking-wider text-[7px]'
+    : faceplateFont === 'code'
+    ? 'font-mono font-medium text-[8px]'
     : 'font-mono font-bold text-[8px]';
 
   const [showTooltip, setShowTooltip] = useState(false);
@@ -277,6 +284,7 @@ export function PortItem({
             : 'hover:scale-102 hover:z-10'
           }
           ${isVlanHighlighted ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-slate-900 shadow-amber-500/30 shadow-lg animate-pulse' : ''}
+          ${isTimeMachineDiff ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-950 shadow-amber-500/60 shadow-xl animate-pulse z-20' : ''}
           ${isDimmed ? 'opacity-20 grayscale' : 'opacity-100'}
         `}
         style={{

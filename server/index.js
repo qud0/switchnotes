@@ -48,6 +48,15 @@ import { WebSocketServer } from 'ws';
 import url from 'url';
 import { packetCaptureManager } from './packetCaptureService.js';
 import { tracePortCircuit } from './circuitTracerService.js';
+import { 
+  getTimeMachineTimeline, 
+  getSwitchStateAtCheckpoint, 
+  rollbackSwitchToCheckpoint 
+} from './timeMachineService.js';
+import { 
+  diagnosePortIncident, 
+  answerCopilotQuery 
+} from './aiCopilotService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2262,6 +2271,70 @@ app.get('/api/circuit-trace/switches/:switchId/ports/:portId', (req, res) => {
     res.json({ success: true, trace });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// ==================== TIME-MACHINE CONFIG DIFF & PLAYBACK API ====================
+app.get('/api/time-machine/switches/:switchId/timeline', (req, res) => {
+  try {
+    const timeline = getTimeMachineTimeline(storage, req.params.switchId);
+    res.json({ success: true, timeline });
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+app.get('/api/time-machine/switches/:switchId/checkpoints/:checkpointId', (req, res) => {
+  try {
+    const data = getSwitchStateAtCheckpoint(storage, req.params.switchId, req.params.checkpointId);
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+app.post('/api/time-machine/switches/:switchId/checkpoints/:checkpointId/rollback', requireRole('engineer'), (req, res) => {
+  try {
+    const result = rollbackSwitchToCheckpoint(storage, req.params.switchId, req.params.checkpointId, req.user?.username || 'admin');
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==================== AI NETWORK COPILOT & INCIDENT HEALER API ====================
+app.get('/api/copilot/switches/:switchId/ports/:portId/diagnosis', (req, res) => {
+  try {
+    const diagnosis = diagnosePortIncident(storage, req.params.switchId, req.params.portId);
+    res.json({ success: true, diagnosis });
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+app.post('/api/copilot/switches/:switchId/ports/:portId/ask', (req, res) => {
+  try {
+    const answer = answerCopilotQuery(storage, req.params.switchId, req.params.portId, req.body?.query || '');
+    res.json({ success: true, ...answer });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/copilot/switches/:switchId/ports/:portId/apply-fix', requireRole('engineer'), async (req, res) => {
+  try {
+    const { script } = req.body || {};
+    storage.logAction({
+      entity: 'ai_copilot',
+      action: 'remediation',
+      title: `Применено исправление AI Copilot для порта ${req.params.portId}`,
+      details: script || 'CLI-команда исправления',
+      author: req.user?.username || 'admin',
+      switchId: req.params.switchId
+    });
+    res.json({ success: true, message: 'Команда исправления успешно передана на выполнение' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

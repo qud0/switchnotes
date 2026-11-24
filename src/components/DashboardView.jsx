@@ -73,6 +73,19 @@ export default function DashboardView({
   const onlineCount = switchPingData?.onlineCount ?? safeSwitches.length;
   const totalSwitches = safeSwitches.length;
 
+  const fallbackTotalPorts = safeSwitches.reduce((acc, s) => acc + (s.ports?.length || 0), 0);
+  const fallbackActivePorts = safeSwitches.reduce((acc, s) => {
+    return acc + (s.ports || []).filter(p => (p.connectedTo || p.linkedSwitchId || p.patchPanelId) && p.enabled !== false).length;
+  }, 0);
+  const fallbackTrunkPorts = safeSwitches.reduce((acc, s) => {
+    return acc + (s.ports || []).filter(p => p.mode === 'trunk').length;
+  }, 0);
+  const displayTotalPorts = healthData?.switches?.totalPorts ?? fallbackTotalPorts;
+  const displayActivePorts = healthData?.switches?.activePorts ?? fallbackActivePorts;
+  const displayFreePorts = Math.max(0, displayTotalPorts - displayActivePorts);
+  const displayPortPercent = displayTotalPorts > 0 ? Math.round((displayActivePorts / displayTotalPorts) * 100) : 0;
+  const displayTrunkPorts = healthData?.switches?.trunkPorts ?? fallbackTrunkPorts;
+
   return (
     <div className="space-y-6">
       {/* Top Header Card */}
@@ -212,10 +225,10 @@ export default function DashboardView({
             </div>
             <div className="flex items-baseline gap-2 mt-2">
               <span className="text-3xl font-extrabold font-mono text-purple-400">
-                {healthData?.switches?.portUtilPercent || 0}%
+                {displayPortPercent}%
               </span>
               <span className="text-xs text-slate-400">
-                ({healthData?.switches?.activePorts || 0} из {healthData?.switches?.totalPorts || 0})
+                ({displayActivePorts} из {displayTotalPorts})
               </span>
             </div>
           </div>
@@ -224,12 +237,12 @@ export default function DashboardView({
             <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
               <div 
                 className="h-full bg-purple-500 transition-all duration-300"
-                style={{ width: `${healthData?.switches?.portUtilPercent || 0}%` }}
+                style={{ width: `${displayPortPercent}%` }}
               />
             </div>
             <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400">
-              <span>Свободно: {healthData?.switches?.freePorts || 0}</span>
-              <span>Магистрали: {healthData?.switches?.trunkPorts || 0}</span>
+              <span>Свободно: {displayFreePorts}</span>
+              <span>Магистрали: {displayTrunkPorts}</span>
             </div>
           </div>
         </div>
@@ -377,20 +390,20 @@ export default function DashboardView({
                     <button
                       onClick={() => handlePingSingle(sw.ip, sw.id)}
                       disabled={isPingLoading}
-                      className="h-9 px-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                      className="h-10 px-4 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
                       title="Проверить отклик ICMP Ping"
                     >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isPingLoading ? 'animate-spin' : ''}`} />
+                      <RefreshCw className={`w-4 h-4 ${isPingLoading ? 'animate-spin' : ''}`} />
                       <span>Пинг</span>
                     </button>
 
                     {onOpenMacDiscovery && (
                       <button
                         onClick={() => onOpenMacDiscovery(sw)}
-                        className="h-9 px-3.5 rounded-xl border border-purple-500/30 bg-purple-50 hover:bg-purple-100 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                        className="h-10 px-4 rounded-xl border border-purple-500/30 bg-purple-50 hover:bg-purple-100 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
                         title="Live-опрос таблицы MAC-адресов"
                       >
-                        <Radio className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                        <Radio className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                         <span>Live MAC</span>
                       </button>
                     )}
@@ -398,10 +411,10 @@ export default function DashboardView({
                     {onSelectSwitch && (
                       <button
                         onClick={() => onSelectSwitch(sw.id)}
-                        className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs shadow-blue-500/20 cursor-pointer"
+                        className="h-10 px-4.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs shadow-blue-500/20 cursor-pointer"
                       >
                         <span>Лицевая панель</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
+                        <ArrowRight className="w-4 h-4" />
                       </button>
                     )}
                   </div>

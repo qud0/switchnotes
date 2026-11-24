@@ -1505,5 +1505,71 @@ export const api = {
       throw new Error(err.error || 'Ошибка построения сквозного маршрута');
     }
     return res.json();
+  },
+
+  // ==================== TIME-MACHINE CONFIG DIFF & PLAYBACK ====================
+  getTimeMachineTimeline: async (switchId) => {
+    const res = await fetch(`${API_BASE}/time-machine/switches/${switchId}/timeline`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка загрузки шкалы времени');
+    }
+    return res.json();
+  },
+
+  getTimeMachineCheckpoint: async (switchId, checkpointId) => {
+    const res = await fetch(`${API_BASE}/time-machine/switches/${switchId}/checkpoints/${checkpointId}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка загрузки контрольной точки');
+    }
+    return res.json();
+  },
+
+  rollbackTimeMachineCheckpoint: async (switchId, checkpointId) => {
+    const res = await fetch(`${API_BASE}/time-machine/switches/${switchId}/checkpoints/${checkpointId}/rollback`, {
+      method: 'POST'
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка отката к контрольной точке');
+    }
+    return res.json();
+  },
+
+  // ==================== AI NETWORK COPILOT & INCIDENT HEALER ====================
+  getCopilotDiagnosis: async (switchId, portId) => {
+    const res = await fetch(`${API_BASE}/copilot/switches/${switchId}/ports/${portId}/diagnosis`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка получения диагноза AI Copilot');
+    }
+    return res.json();
+  },
+
+  askCopilot: async (switchId, portId, query) => {
+    const res = await fetch(`${API_BASE}/copilot/switches/${switchId}/ports/${portId}/ask`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка запроса к AI Copilot');
+    }
+    return res.json();
+  },
+
+  applyCopilotFix: async (switchId, portId, script) => {
+    const res = await fetch(`${API_BASE}/copilot/switches/${switchId}/ports/${portId}/apply-fix`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка применения исправления AI');
+    }
+    return res.json();
   }
 };
