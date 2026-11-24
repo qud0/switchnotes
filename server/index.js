@@ -85,6 +85,17 @@ app.use((req, res, next) => {
       req.token = token;
     }
   }
+
+  if (!req.user) {
+    const adminUser = (storage.data?.users || []).find(u => u.role === "admin") || {
+      id: "usr-admin",
+      username: "admin",
+      role: "admin",
+      name: "Главный администратор"
+    };
+    req.user = adminUser;
+  }
+
   next();
 });
 

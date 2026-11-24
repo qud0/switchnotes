@@ -251,7 +251,7 @@ export function Header({
         </div>
 
         {/* 2. Main View Switcher Tabs (Desktop / Tablet >= md) */}
-        <div className={`hidden md:flex items-center p-0.5 rounded-xl border shrink-0 h-9 overflow-x-auto max-w-[42vw] lg:max-w-[50vw] xl:max-w-none scrollbar-none ${
+        <div className={`hidden md:flex items-center p-0.5 rounded-xl border shrink h-9 overflow-x-auto max-w-[38vw] lg:max-w-[46vw] xl:max-w-[52vw] 2xl:max-w-none scrollbar-none ${
           isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-900 border-slate-800'
         }`}>
           {VIEWS.map((item) => {

@@ -140,6 +140,20 @@ export function SwitchFaceplate({
     }
   }, [faceplateFont]);
 
+  const faceplateFontFamilyStyle = useMemo(() => {
+    switch (faceplateFont) {
+      case 'sans':
+        return { fontFamily: "'Inter', system-ui, -apple-system, sans-serif" };
+      case 'tech':
+        return { fontFamily: "'Courier New', Courier, 'Lucida Console', monospace", letterSpacing: '0.04em' };
+      case 'code':
+        return { fontFamily: "'Fira Code', 'Cascadia Code', Consolas, monospace", fontFeatureSettings: "'liga' 1, 'calt' 1" };
+      case 'mono':
+      default:
+        return { fontFamily: "'JetBrains Mono', 'SF Mono', Consolas, monospace" };
+    }
+  }, [faceplateFont]);
+
   const isMikrotikVendor = String(switchData?.vendor || '').toLowerCase().includes('mikrotik');
 
   const chassisThemeStyles = useMemo(() => {
@@ -1324,7 +1338,10 @@ export function SwitchFaceplate({
 
           {/* Switch Physical 19" Rackmount Front Panel Chassis */}
           <div className="relative overflow-x-auto pb-4">
-            <div className={`min-w-[960px] border-2 rounded-xl p-4 flex items-center relative select-none transition-all duration-200 ${chassisThemeStyles.chassis} ${faceplateFont === 'sans' ? 'font-sans' : 'font-mono'}`}>
+            <div 
+              className={`min-w-[960px] border-2 rounded-xl p-4 flex items-center relative select-none transition-all duration-200 ${chassisThemeStyles.chassis} ${faceplateFont === 'sans' ? 'font-sans' : 'font-mono'}`}
+              style={faceplateFontFamilyStyle}
+            >
               {/* Left Rack Ear (19" Mounting Wing) */}
               <div className={`w-10 h-36 border-r-2 rounded-l-lg flex flex-col justify-between items-center py-4 -ml-4 mr-4 shrink-0 shadow-inner ${chassisThemeStyles.ears}`}>
                 <div className={`w-4 h-4 rounded-full border-2 shadow-inner flex items-center justify-center ${chassisThemeStyles.screws}`}>

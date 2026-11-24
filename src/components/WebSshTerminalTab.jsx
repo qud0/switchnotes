@@ -253,13 +253,15 @@ export default function WebSshTerminalTab({
       }`}>
         <div className="flex items-center gap-2">
           {/* Status Badge */}
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-sans font-semibold bg-black/20">
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-sans font-semibold border ${
+            isLight ? 'bg-slate-100 border-slate-200' : 'bg-black/30 border-slate-800'
+          }`}>
             <span className={`w-2 h-2 rounded-full ${
               connectionStatus === 'connected' ? 'bg-emerald-400 animate-pulse' :
               connectionStatus === 'fallback' ? 'bg-blue-400' :
               connectionStatus === 'connecting' ? 'bg-amber-400 animate-spin' : 'bg-rose-500'
             }`} />
-            <span className="text-slate-300">
+            <span className={isLight ? 'text-slate-700' : 'text-slate-300'}>
               {connectionStatus === 'connected' ? 'SSH Live' :
                connectionStatus === 'fallback' ? 'Лаб. эмулятор' :
                connectionStatus === 'connecting' ? 'Подключение...' : 'Отключено'}

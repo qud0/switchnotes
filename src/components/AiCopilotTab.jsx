@@ -138,26 +138,29 @@ export default function AiCopilotTab({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
+                <h3 className={`text-xs font-bold flex items-center gap-1.5 ${isLight ? 'text-slate-900' : 'text-white'}`}>
                   <span>{diagnosis.title}</span>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold ${
                     isCritical ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
                     isWarning ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                    isLight ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' :
                     'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                   }`}>
                     {diagnosis.severity}
                   </span>
                 </h3>
               </div>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 Интерфейс {diagnosis.portName} • Свитч {diagnosis.switchName}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-black/30 text-purple-300 border border-purple-500/20 flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            <span className={`text-xs font-mono font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1 ${
+              isLight ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-black/30 text-purple-300 border-purple-500/20'
+            }`}>
+              <Sparkles className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
               <span>Уверенность AI: {diagnosis.confidence}%</span>
             </span>
           </div>
@@ -166,11 +169,13 @@ export default function AiCopilotTab({
         {/* Correlation badges */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
           {diagnosis.correlations.map((cor, i) => (
-            <div key={i} className="p-2 rounded-xl bg-black/20 border border-slate-800/80 text-xs">
-              <span className="text-[10px] text-slate-400 block">{cor.label}</span>
+            <div key={i} className={`p-2 rounded-xl text-xs border ${
+              isLight ? 'bg-white border-slate-200 shadow-xs' : 'bg-black/20 border-slate-800/80'
+            }`}>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 block">{cor.label}</span>
               <span className={`font-mono font-bold ${
-                cor.status === 'critical' ? 'text-rose-400' :
-                cor.status === 'warning' ? 'text-amber-400' : 'text-emerald-400'
+                cor.status === 'critical' ? 'text-rose-500 dark:text-rose-400' :
+                cor.status === 'warning' ? 'text-amber-500 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
               }`}>
                 {cor.value}
               </span>
@@ -179,17 +184,19 @@ export default function AiCopilotTab({
         </div>
 
         {/* Executive Summary Explanation */}
-        <div className="p-3 rounded-xl bg-black/25 text-xs leading-relaxed text-slate-300 border border-slate-800/60">
+        <div className={`p-3 rounded-xl text-xs leading-relaxed border ${
+          isLight ? 'bg-white text-slate-700 border-slate-200 shadow-xs' : 'bg-black/25 text-slate-300 border-slate-800/60'
+        }`}>
           <p>{diagnosis.explanation}</p>
         </div>
 
         {/* Action Plan */}
         {diagnosis.actionPlan && diagnosis.actionPlan.length > 0 && (
           <div className="space-y-1.5 pt-1">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400">
               Рекомендуемый порядок устранения:
             </span>
-            <ul className="space-y-1 text-xs text-slate-300">
+            <ul className={`space-y-1 text-xs ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
               {diagnosis.actionPlan.map((step, idx) => (
                 <li key={idx} className="flex items-start gap-2">
                   <span className="w-4 h-4 rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
@@ -238,14 +245,14 @@ export default function AiCopilotTab({
       <div className={`p-4 rounded-2xl border space-y-3 ${
         isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
       }`}>
-        <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+        <div className={`flex items-center gap-2 text-xs font-bold ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>
           <HelpCircle className="w-4 h-4 text-purple-400" />
           <span>Спросить AI Copilot о порте {diagnosis.portName}:</span>
         </div>
 
         {/* Chat History */}
         {chatHistory.length > 0 && (
-          <div className="space-y-2 max-h-48 overflow-y-auto p-2 rounded-xl bg-black/20 text-xs">
+          <div className={`space-y-2 max-h-48 overflow-y-auto p-2 rounded-xl text-xs ${isLight ? 'bg-slate-100' : 'bg-black/20'}`}>
             {chatHistory.map((item, idx) => (
               <div key={idx} className={`p-2.5 rounded-xl ${
                 item.role === 'user' 

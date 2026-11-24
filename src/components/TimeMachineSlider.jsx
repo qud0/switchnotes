@@ -210,13 +210,13 @@ export default function TimeMachineSlider({
             <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-white">
+                <span className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
                   {currentChk.label}
                 </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-black/20 text-slate-300">
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${isLight ? 'bg-slate-100 text-slate-700' : 'bg-black/20 text-slate-300'}`}>
                   {new Date(currentChk.timestamp).toLocaleString()}
                 </span>
-                <span className="text-[10px] font-sans px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 flex items-center gap-1">
+                <span className="text-[10px] font-sans px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 flex items-center gap-1 font-semibold">
                   <User className="w-3 h-3" />
                   {currentChk.author}
                 </span>
@@ -261,17 +261,19 @@ export default function TimeMachineSlider({
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
             {activeCheckpointData.diffs.map((diff) => (
-              <div key={diff.portId} className="p-2 rounded-lg bg-black/20 border border-slate-800">
-                <div className="font-bold text-white flex items-center justify-between">
+              <div key={diff.portId} className={`p-2 rounded-lg border ${
+                isLight ? 'bg-white border-amber-200 shadow-xs' : 'bg-black/20 border-slate-800'
+              }`}>
+                <div className={`font-bold flex items-center justify-between ${isLight ? 'text-slate-900' : 'text-white'}`}>
                   <span>Порт {diff.portName}</span>
-                  <span className="text-[10px] text-amber-400">#{diff.portNum}</span>
+                  <span className="text-[10px] text-amber-500 font-mono">#{diff.portNum}</span>
                 </div>
                 {diff.changes.map((c, i) => (
-                  <div key={i} className="text-[11px] text-slate-300 mt-1">
+                  <div key={i} className={`text-[11px] mt-1 ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
                     <span className="text-slate-400">{c.label}: </span>
-                    <span className="line-through text-rose-400">{String(c.current)}</span>
-                    <ArrowRight className="w-3 h-3 inline mx-1 text-slate-500" />
-                    <span className="text-emerald-400 font-bold">{String(c.historical)}</span>
+                    <span className="line-through text-rose-500 dark:text-rose-400 font-semibold">{String(c.current)}</span>
+                    <ArrowRight className="w-3 h-3 inline mx-1 text-slate-400" />
+                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">{String(c.historical)}</span>
                   </div>
                 ))}
               </div>

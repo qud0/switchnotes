@@ -86,6 +86,31 @@ export default function DashboardView({
   const displayPortPercent = displayTotalPorts > 0 ? Math.round((displayActivePorts / displayTotalPorts) * 100) : 0;
   const displayTrunkPorts = healthData?.switches?.trunkPorts ?? fallbackTrunkPorts;
 
+  // Calculate fallback PoE from safeSwitches
+  let fallbackPoeBudget = 0;
+  let fallbackPoeUsed = 0;
+  let fallbackPoePortsCount = 0;
+  safeSwitches.forEach(sw => {
+    const hasPoe = (sw.ports || []).some(p => p.poe);
+    if (hasPoe) {
+      fallbackPoeBudget += (sw.vendor === 'SNR' ? 370 : (sw.vendor === 'Ubiquiti' ? 400 : 150));
+    }
+    (sw.ports || []).forEach(p => {
+      if (p.poe) {
+        fallbackPoePortsCount++;
+        if ((p.connectedTo || p.linkedSwitchId || p.patchPanelId) && p.enabled !== false) {
+          fallbackPoeUsed += 8.5;
+        }
+      }
+    });
+  });
+  fallbackPoeUsed = Math.round(fallbackPoeUsed);
+  const displayPoeUsed = healthData?.poe?.totalWattsUsed ?? fallbackPoeUsed;
+  const displayPoeBudget = healthData?.poe?.totalPsuBudget ?? fallbackPoeBudget;
+  const displayPoePercent = displayPoeBudget > 0 ? Math.round((displayPoeUsed / displayPoeBudget) * 100) : 0;
+  const displayPoeRemaining = Math.max(0, displayPoeBudget - displayPoeUsed);
+  const displayPoePorts = healthData?.poe?.totalPoePorts ?? fallbackPoePortsCount;
+
   return (
     <div className="space-y-6">
       {/* Top Header Card */}
@@ -271,11 +296,11 @@ export default function DashboardView({
               <Zap className="w-4 h-4 text-amber-400" />
             </div>
             <div className="flex items-baseline gap-2 mt-2">
-              <span className="text-3xl font-extrabold font-mono text-amber-400">
-                {healthData?.poe?.totalWattsUsed || 0} Вт
+              <span className="text-3xl font-extrabold font-mono text-amber-500 dark:text-amber-400">
+                {displayPoeUsed} Вт
               </span>
-              <span className="text-xs text-slate-400">
-                из {healthData?.poe?.totalPsuBudget || 0} Вт ({healthData?.poe?.percentUsed || 0}%)
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                из {displayPoeBudget} Вт ({displayPoePercent}%)
               </span>
             </div>
           </div>
@@ -284,12 +309,12 @@ export default function DashboardView({
             <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
               <div 
                 className="h-full bg-amber-500 transition-all duration-300"
-                style={{ width: `${healthData?.poe?.percentUsed || 0}%` }}
+                style={{ width: `${displayPoePercent}%` }}
               />
             </div>
             <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400">
-              <span>Запас: {healthData?.poe?.remainingWatts || 0} Вт</span>
-              <span>PoE портов: {healthData?.poe?.totalPoePorts || 0}</span>
+              <span>Запас: {displayPoeRemaining} Вт</span>
+              <span>PoE портов: {displayPoePorts}</span>
             </div>
           </div>
         </div>

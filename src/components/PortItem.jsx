@@ -280,11 +280,11 @@ export function PortItem({
                 : (isDisabled ? 'bg-slate-900/90 border border-slate-800 opacity-60' : 'bg-slate-800/95 border'))
           }
           ${isSelected
-            ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-slate-950 scale-105 z-20 shadow-lg'
+            ? `ring-2 ring-blue-500 ring-offset-2 ${isLight ? 'ring-offset-white' : 'ring-offset-slate-950'} scale-105 z-20 shadow-lg`
             : 'hover:scale-102 hover:z-10'
           }
-          ${isVlanHighlighted ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-slate-900 shadow-amber-500/30 shadow-lg animate-pulse' : ''}
-          ${isTimeMachineDiff ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-950 shadow-amber-500/60 shadow-xl animate-pulse z-20' : ''}
+          ${isVlanHighlighted ? `ring-2 ring-amber-400 ring-offset-1 ${isLight ? 'ring-offset-white' : 'ring-offset-slate-900'} shadow-amber-500/30 shadow-lg animate-pulse` : ''}
+          ${isTimeMachineDiff ? `ring-2 ring-amber-400 ring-offset-2 ${isLight ? 'ring-offset-white' : 'ring-offset-slate-950'} shadow-amber-500/60 shadow-xl animate-pulse z-20` : ''}
           ${isDimmed ? 'opacity-20 grayscale' : 'opacity-100'}
         `}
         style={{
