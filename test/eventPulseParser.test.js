@@ -51,6 +51,16 @@ test('parseSyslogMessage parses MikroTik STP topology change', () => {
   assert.equal(result.severity, 'warning');
 });
 
+test('parseSyslogMessage parses MikroTik configuration change event', () => {
+  const msg = 'system,info device configuration changed by admin via winbox';
+  const result = parseSyslogMessage(msg, '192.168.88.1');
+
+  assert.ok(result);
+  assert.equal(result.vendor, 'mikrotik');
+  assert.equal(result.type, 'config_change');
+  assert.equal(result.severity, 'warning');
+});
+
 test('LinkFlapDetector detects flapping on 3+ transitions in 60s', () => {
   const detector = new LinkFlapDetector();
   const swId = 'sw-1';

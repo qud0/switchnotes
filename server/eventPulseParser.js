@@ -150,6 +150,21 @@ export function parseSyslogMessage(raw, remoteIp = '0.0.0.0') {
     };
   }
 
+  // system,info device configuration changed by admin via winbox / ssh
+  const mtConfigMatch = body.match(/system,info(?:,account)?.*?(?:configuration changed|logged in and changed)/i);
+  if (mtConfigMatch) {
+    return {
+      vendor: 'mikrotik',
+      type: 'config_change',
+      severity: 'warning',
+      title: `Изменение конфигурации (MikroTik)`,
+      desc: body,
+      remoteIp,
+      raw: cleanStr,
+      timestamp: new Date().toISOString()
+    };
+  }
+
   // Generic fallback event
   return {
     vendor: 'generic',
