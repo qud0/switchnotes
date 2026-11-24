@@ -1055,6 +1055,62 @@ export const api = {
     return res.json();
   },
 
+  // Firmware Multi-Stage Canary Rollout
+  getFirmwareCatalog: async () => {
+    const res = await fetch(`${API_BASE}/firmware/catalog`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка получения каталога прошивок');
+    }
+    return res.json();
+  },
+
+  runFirmwarePreflight: async (payload = {}) => {
+    const res = await fetch(`${API_BASE}/firmware/preflight`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка Pre-Flight проверки прошивки');
+    }
+    return res.json();
+  },
+
+  startFirmwareRollout: async (payload = {}) => {
+    const res = await fetch(`${API_BASE}/firmware/rollout/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка запуска конвейера обновления');
+    }
+    return res.json();
+  },
+
+  getFirmwareRolloutStatus: async (rolloutId) => {
+    const res = await fetch(`${API_BASE}/firmware/rollout/status/${rolloutId}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка получения статуса обновления');
+    }
+    return res.json();
+  },
+
+  abortFirmwareRollout: async (rolloutId) => {
+    const res = await fetch(`${API_BASE}/firmware/rollout/abort/${rolloutId}`, {
+      method: 'POST'
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка отмены конвейера обновления');
+    }
+    return res.json();
+  },
+
   generateBatchPortScript: async (switchId, params) => {
     const res = await fetch(`${API_BASE}/switches/${switchId}/ports/provision-script`, {
       method: 'POST',
