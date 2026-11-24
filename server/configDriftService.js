@@ -10,6 +10,7 @@
 
 import { normalizeConfig, calculateNormalizedHash } from './configNormalizer.js';
 import { fetchSwitchConfigOverSsh, executeSshCommand } from './backupService.js';
+import { computeConfigDiff, generateRollbackScript } from '../src/utils/diffUtils.js';
 
 export class ConfigDriftService {
   constructor() {
@@ -20,6 +21,7 @@ export class ConfigDriftService {
     this.queue = [];
     this.pendingTimers = new Map(); // switchId -> timer
     this.cooldownMap = new Map();   // switchId -> timestamp
+    this.schedulerTimer = null;
   }
 
   /**
@@ -30,6 +32,7 @@ export class ConfigDriftService {
   init(storage, eventPulseDaemon = null) {
     this.storage = storage;
     this.eventPulseDaemon = eventPulseDaemon;
+    this.startScheduler();
   }
 
   /**
@@ -429,6 +432,282 @@ export class ConfigDriftService {
   }
 
   /**
+   * Returns current automated drift scanning schedule settings.
+   * @returns {Object}
+   */
+  getScheduleSettings() {
+    const defaultSettings = {
+      enabled: true,
+      intervalHours: 6,
+      autoRollbackSafe: false,
+      lastScanTime: null,
+      nextScanTime: null
+    };
+    if (!this.storage?.data) return defaultSettings;
+    if (!this.storage.data.driftSchedule) {
+      this.storage.data.driftSchedule = { ...defaultSettings };
+    }
+    return { ...defaultSettings, ...this.storage.data.driftSchedule };
+  }
+
+  /**
+   * Updates schedule settings and restarts timer.
+   * @param {Object} newSettings
+   * @returns {Object}
+   */
+  updateScheduleSettings(newSettings = {}) {
+    const current = this.getScheduleSettings();
+    const updated = {
+      ...current,
+      ...newSettings,
+      intervalHours: Math.max(0.5, Number(newSettings.intervalHours) || current.intervalHours || 6),
+      enabled: newSettings.enabled !== undefined ? Boolean(newSettings.enabled) : current.enabled
+    };
+
+    if (this.storage?.data) {
+      this.storage.data.driftSchedule = updated;
+      if (this.storage.save) this.storage.save();
+    }
+
+    this.startScheduler();
+    return updated;
+  }
+
+  /**
+   * Starts periodic background drift scanner timer.
+   */
+  startScheduler() {
+    this.stopScheduler();
+    const settings = this.getScheduleSettings();
+    if (!settings.enabled) return;
+
+    const intervalMs = settings.intervalHours * 60 * 60 * 1000;
+    const nextScan = new Date(Date.now() + intervalMs).toISOString();
+
+    if (this.storage?.data?.driftSchedule) {
+      this.storage.data.driftSchedule.nextScanTime = nextScan;
+    }
+
+    this.schedulerTimer = setInterval(async () => {
+      try {
+        console.log(`[ConfigDrift] Запуск запланированного сканирования всей сети...`);
+        await this.scanAllSwitchesDrift();
+      } catch (err) {
+        console.error('[ConfigDrift] Ошибка планового сканирования сети:', err.message);
+      }
+    }, intervalMs);
+
+    if (this.schedulerTimer.unref) {
+      this.schedulerTimer.unref();
+    }
+  }
+
+  /**
+   * Stops periodic background drift scanner timer.
+   */
+  stopScheduler() {
+    if (this.schedulerTimer) {
+      clearInterval(this.schedulerTimer);
+      this.schedulerTimer = null;
+    }
+  }
+
+  /**
+   * Performs a fleet-wide drift scan across all switches with concurrency limits.
+   * @returns {Promise<Object>}
+   */
+  async scanAllSwitchesDrift() {
+    const switches = this.storage?.getSwitches ? this.storage.getSwitches() : [];
+    const nowIso = new Date().toISOString();
+
+    let driftedCount = 0;
+    let inSyncCount = 0;
+    let errorsCount = 0;
+    const results = [];
+
+    // Worker pool capped at maxConcurrency
+    const queue = [...switches];
+    const workers = Array.from({ length: Math.min(this.maxConcurrency, switches.length || 1) }, async () => {
+      while (queue.length > 0) {
+        const sw = queue.shift();
+        try {
+          const res = await this.checkSwitchDrift(sw.id);
+          results.push(res);
+          if (res.driftStatus === 'drifted') driftedCount++;
+          else inSyncCount++;
+        } catch (err) {
+          errorsCount++;
+          results.push({
+            switchId: sw.id,
+            driftStatus: 'error',
+            error: err.message
+          });
+        }
+      }
+    });
+
+    await Promise.all(workers);
+
+    // Update timestamps in schedule settings
+    const settings = this.getScheduleSettings();
+    const intervalMs = (settings.intervalHours || 6) * 60 * 60 * 1000;
+    const nextScan = new Date(Date.now() + intervalMs).toISOString();
+
+    if (this.storage?.data?.driftSchedule) {
+      this.storage.data.driftSchedule.lastScanTime = nowIso;
+      this.storage.data.driftSchedule.nextScanTime = nextScan;
+      if (this.storage.save) this.storage.save();
+    }
+
+    return {
+      timestamp: nowIso,
+      totalSwitches: switches.length,
+      scannedCount: results.length,
+      driftedCount,
+      inSyncCount,
+      errorsCount,
+      results
+    };
+  }
+
+  /**
+   * Generates a detailed fleet-wide drift report with diffs and safe rollback scripts.
+   * @returns {Promise<Object>}
+   */
+  async getFleetDriftReport() {
+    const switches = this.storage?.getSwitches ? this.storage.getSwitches() : [];
+    const driftedList = [];
+    let inSyncCount = 0;
+    let unmonitoredCount = 0;
+
+    for (const sw of switches) {
+      if (sw.driftStatus === 'in_sync') {
+        inSyncCount++;
+        continue;
+      }
+      if (sw.driftStatus !== 'drifted') {
+        unmonitoredCount++;
+        continue;
+      }
+
+      const backups = this.storage?.getBackups ? this.storage.getBackups(sw.id) : [];
+      const goldenBackup = backups.find(b => b.isGolden) || backups[0];
+      const runningConfig = sw.lastDriftRunningConfig || (goldenBackup ? goldenBackup.content : '');
+
+      let diffRows = [];
+      let rollbackScriptObj = { script: '', rollbackCommandsCount: 0 };
+      let rollbackCommands = [];
+      let isSafe = true;
+      let guardrailReason = null;
+
+      if (goldenBackup && runningConfig) {
+        const diffRes = computeConfigDiff(goldenBackup.content, runningConfig);
+        diffRows = diffRes.rows;
+        rollbackScriptObj = generateRollbackScript(diffRows, sw.vendor || 'SNR');
+        rollbackCommands = rollbackScriptObj.script
+          .split('\n')
+          .map(l => l.trim())
+          .filter(l => l && !l.startsWith('!') && !l.startsWith('#'));
+
+        const safetyCheck = this.validateRollbackSafety(rollbackCommands, sw);
+        isSafe = safetyCheck.safe;
+        guardrailReason = safetyCheck.reason || null;
+      }
+
+      driftedList.push({
+        switchId: sw.id,
+        switchName: sw.name,
+        ip: sw.ip,
+        vendor: sw.vendor || 'SNR',
+        model: sw.model,
+        location: sw.location,
+        lastCheck: sw.lastDriftCheck,
+        diffStats: sw.lastDriftDiff || { addedCount: 0, removedCount: 0 },
+        diffRows,
+        goldenBackupId: goldenBackup?.id,
+        goldenBackupTimestamp: goldenBackup?.timestamp,
+        goldenComment: goldenBackup?.comment,
+        rollbackScript: rollbackScriptObj.script,
+        rollbackCommands,
+        rollbackCommandsCount: rollbackCommands.length,
+        isRollbackSafe: isSafe,
+        guardrailReason
+      });
+    }
+
+    return {
+      timestamp: new Date().toISOString(),
+      totalSwitches: switches.length,
+      driftedCount: driftedList.length,
+      inSyncCount,
+      unmonitoredCount,
+      driftedSwitches: driftedList,
+      schedule: this.getScheduleSettings()
+    };
+  }
+
+  /**
+   * Batch rollback for drifted switches with fail-fast validation.
+   * @param {string[]} [switchIds]
+   * @param {Object} [options]
+   * @returns {Promise<Object>}
+   */
+  async batchRollbackDrift(switchIds = [], options = {}) {
+    const report = await this.getFleetDriftReport();
+    const targetIds = switchIds.length > 0 
+      ? new Set(switchIds.map(String))
+      : new Set(report.driftedSwitches.map(s => String(s.switchId)));
+
+    const targets = report.driftedSwitches.filter(s => targetIds.has(String(s.switchId)));
+    const results = [];
+
+    for (const item of targets) {
+      try {
+        if (!item.isRollbackSafe && !options.force) {
+          results.push({
+            switchId: item.switchId,
+            switchName: item.switchName,
+            success: false,
+            error: item.guardrailReason || 'Заблокировано Guardrails'
+          });
+          continue;
+        }
+
+        const res = await this.reconcileRollback(item.switchId, {
+          commands: item.rollbackCommands,
+          force: options.force
+        });
+
+        results.push({
+          switchId: item.switchId,
+          switchName: item.switchName,
+          success: true,
+          executedCommandsCount: res.executedCommandsCount,
+          message: res.message
+        });
+      } catch (err) {
+        results.push({
+          switchId: item.switchId,
+          switchName: item.switchName,
+          success: false,
+          error: err.message
+        });
+      }
+    }
+
+    const rolledBackCount = results.filter(r => r.success).length;
+    const failedCount = results.filter(r => !r.success).length;
+
+    return {
+      success: failedCount === 0,
+      totalRequested: targets.length,
+      rolledBackCount,
+      failedCount,
+      results
+    };
+  }
+
+  /**
    * Returns overview of drift statuses across all switches.
    * @returns {Object}
    */
@@ -445,7 +724,8 @@ export class ConfigDriftService {
       inSync,
       unmonitored,
       activeQueueLength: this.queue.length,
-      activeWorkers: this.activeWorkers
+      activeWorkers: this.activeWorkers,
+      schedule: this.getScheduleSettings()
     };
   }
 }

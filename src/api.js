@@ -1393,6 +1393,55 @@ export const api = {
     return res.json();
   },
 
+  getDriftSchedule: async () => {
+    const res = await fetch(`${API_BASE}/drift/schedule`);
+    if (!res.ok) throw new Error('Не удалось получить расписание радара дрифта');
+    return res.json();
+  },
+
+  updateDriftSchedule: async (settings) => {
+    const res = await fetch(`${API_BASE}/drift/schedule`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка обновления расписания дрифта');
+    }
+    return res.json();
+  },
+
+  scanAllDrift: async () => {
+    const res = await fetch(`${API_BASE}/drift/scan-all`, {
+      method: 'POST'
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка сканирования дрифта всей сети');
+    }
+    return res.json();
+  },
+
+  getDriftReport: async () => {
+    const res = await fetch(`${API_BASE}/drift/report`);
+    if (!res.ok) throw new Error('Не удалось получить сводный отчет дрифта');
+    return res.json();
+  },
+
+  batchRollbackDrift: async (switchIds = [], options = {}) => {
+    const res = await fetch(`${API_BASE}/drift/batch-rollback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ switchIds, ...options })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка пакетного отката дрифта');
+    }
+    return res.json();
+  },
+
   // VLAN Blast Radius Simulator
   simulateVlanChange: async (proposal) => {
     const res = await fetch(`${API_BASE}/vlan-simulator/simulate`, {

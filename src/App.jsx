@@ -50,6 +50,7 @@ const PoeBudgetModal = lazy(() => import('./components/PoeBudgetModal').then(m =
 const NetworkDiscoveryModal = lazy(() => import('./components/NetworkDiscoveryModal').then(m => ({ default: m.NetworkDiscoveryModal })));
 const ConfigTemplateModal = lazy(() => import('./components/ConfigTemplateModal').then(m => ({ default: m.ConfigTemplateModal })));
 const VlanBlastRadiusModal = lazy(() => import('./components/VlanBlastRadiusModal'));
+const ConfigDriftRadarModal = lazy(() => import('./components/ConfigDriftRadarModal').then(m => ({ default: m.ConfigDriftRadarModal })));
 import LoginModal from './components/LoginModal';
 import UsersModal from './components/UsersModal';
 import { useToast } from './context/ToastContext';
@@ -174,6 +175,7 @@ export default function App() {
   const [isConfigTemplatesModalOpen, setIsConfigTemplatesModalOpen] = useState(false);
   const [isBlastRadiusOpen, setIsBlastRadiusOpen] = useState(false);
   const [blastRadiusSwitchId, setBlastRadiusSwitchId] = useState('');
+  const [isDriftRadarOpen, setIsDriftRadarOpen] = useState(false);
 
   // Zoom scale state: 70% to 150%
   const [zoomLevel, setZoomLevel] = useState(() => {
@@ -929,6 +931,7 @@ export default function App() {
           setWebSerialSwitch(sw || null);
           setIsWebSerialOpen(true);
         }}
+        onOpenDriftRadar={() => setIsDriftRadarOpen(true)}
         unreadAlertsCount={unreadAlertsCount}
         auditIssuesCount={auditSummary.counts.total}
         auditHealthScore={auditSummary.healthScore}
@@ -994,6 +997,7 @@ export default function App() {
               setPoeModalSwitchId(swId || switches[0]?.id);
               setIsPoeModalOpen(true);
             }}
+            onOpenDriftRadar={() => setIsDriftRadarOpen(true)}
             theme={theme}
           />
         ) : currentView === 'servers' ? (
@@ -1683,6 +1687,19 @@ export default function App() {
           vlans={vlans}
           theme={theme}
         />
+
+        {/* Config Drift Radar & Auto-Rollback Engine Modal */}
+        <ConfigDriftRadarModal
+          isOpen={isDriftRadarOpen}
+          onClose={() => setIsDriftRadarOpen(false)}
+          switches={switches}
+          onSelectSwitch={(id) => {
+            setSelectedSwitchId(id);
+            setCurrentView('switches');
+          }}
+          onReloadData={fetchData}
+          theme={theme}
+        />
       </Suspense>
 
       {/* Global Command Palette (Ctrl+K / Cmd+K) */}
@@ -1706,6 +1723,7 @@ export default function App() {
         onOpenVlanModal={() => setIsVlanModalOpen(true)}
         onOpenAuditModal={() => setIsAuditModalOpen(true)}
         onOpenDiscoveryModal={() => setIsDiscoveryModalOpen(true)}
+        onOpenDriftRadar={() => setIsDriftRadarOpen(true)}
         onOpenPoeModal={(swId) => {
           setPoeModalSwitchId(swId || selectedSwitchId || switches[0]?.id);
           setIsPoeModalOpen(true);

@@ -1530,6 +1530,77 @@ app.get('/api/drift/status', (req, res) => {
   }
 });
 
+// Get drift automated scan schedule
+app.get('/api/drift/schedule', requireRole('engineer'), (req, res) => {
+  try {
+    res.json(configDriftService.getScheduleSettings());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update drift automated scan schedule
+app.put('/api/drift/schedule', requireRole('admin'), (req, res) => {
+  try {
+    const updated = configDriftService.updateScheduleSettings(req.body);
+    storage.logAction({
+      entity: 'drift',
+      action: 'update_schedule',
+      title: `Обновлено расписание радара дрифта (каждые ${updated.intervalHours} ч., активно: ${updated.enabled})`,
+      details: `Периодичность: ${updated.intervalHours} ч., включено: ${updated.enabled}`,
+      author: req.user?.username || 'admin'
+    });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Immediate fleet-wide drift scan
+app.post('/api/drift/scan-all', requireRole('engineer'), async (req, res) => {
+  try {
+    const result = await configDriftService.scanAllSwitchesDrift();
+    storage.logAction({
+      entity: 'drift',
+      action: 'scan_all',
+      title: `Выполнено сканирование дрифта всей сети (${result.scannedCount} свитчей)`,
+      details: `Обнаружен дрифт: ${result.driftedCount}, в норме: ${result.inSyncCount}, ошибок: ${result.errorsCount}`,
+      author: req.user?.username || 'admin'
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get comprehensive fleet drift report with pre-generated safe rollback scripts
+app.get('/api/drift/report', requireRole('engineer'), async (req, res) => {
+  try {
+    const report = await configDriftService.getFleetDriftReport();
+    res.json(report);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Batch safe rollback for drifted switches
+app.post('/api/drift/batch-rollback', requireRole('admin'), async (req, res) => {
+  try {
+    const { switchIds, force } = req.body || {};
+    const result = await configDriftService.batchRollbackDrift(switchIds, { force });
+    storage.logAction({
+      entity: 'drift',
+      action: 'batch_rollback',
+      title: `Пакетный откат дрифта: успешно ${result.rolledBackCount} из ${result.totalRequested} свитчей`,
+      details: `Результаты: ${result.results.map(r => `${r.switchName}: ${r.success ? 'Успех' : r.error}`).join('; ')}`,
+      author: req.user?.username || 'admin'
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Immediate drift check for a specific switch
 app.post('/api/drift/:switchId/check', requireRole('engineer'), async (req, res) => {
   try {

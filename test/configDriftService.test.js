@@ -108,3 +108,92 @@ test('ConfigDriftService computes drift status accurately using Golden Baseline'
   assert.ok(result.diff.addedCount > 0);
   assert.equal(switchItem.driftStatus, 'drifted');
 });
+
+test('getScheduleSettings and updateScheduleSettings manage automated drift schedule', () => {
+  const service = new ConfigDriftService();
+  const mockStorage = {
+    data: {}
+  };
+  service.storage = mockStorage;
+
+  const initial = service.getScheduleSettings();
+  assert.equal(initial.enabled, true);
+  assert.equal(initial.intervalHours, 6);
+
+  const updated = service.updateScheduleSettings({ intervalHours: 12, enabled: false });
+  assert.equal(updated.intervalHours, 12);
+  assert.equal(updated.enabled, false);
+  assert.equal(service.schedulerTimer, null); // Stopped because enabled is false
+
+  service.stopScheduler();
+});
+
+test('scanAllSwitchesDrift scans fleet and records timestamps', async () => {
+  const service = new ConfigDriftService();
+  const switches = [
+    { id: 'sw-1', name: 'SW-1', ip: '10.0.0.1', vendor: 'SNR' },
+    { id: 'sw-2', name: 'SW-2', ip: '10.0.0.2', vendor: 'SNR' }
+  ];
+
+  const mockStorage = {
+    data: { driftSchedule: { enabled: true, intervalHours: 4 } },
+    getSwitches: () => switches,
+    getSwitch: (id) => switches.find(s => s.id === id),
+    getBackups: () => [],
+    addBackup: () => {},
+    updateSwitch: (id, updates) => {
+      const sw = switches.find(s => s.id === id);
+      if (sw) Object.assign(sw, updates);
+    },
+    save: () => {}
+  };
+  service.storage = mockStorage;
+  service.fetchRunningConfig = async () => 'hostname SW\n!';
+
+  const scanResult = await service.scanAllSwitchesDrift();
+  assert.equal(scanResult.totalSwitches, 2);
+  assert.equal(scanResult.scannedCount, 2);
+  assert.ok(mockStorage.data.driftSchedule.lastScanTime);
+  assert.ok(mockStorage.data.driftSchedule.nextScanTime);
+
+  service.stopScheduler();
+});
+
+test('getFleetDriftReport generates rollback scripts and checks Guardrails for drifted devices', async () => {
+  const service = new ConfigDriftService();
+  const sw = {
+    id: 'sw-drifted',
+    name: 'SW-CORE-DIST',
+    ip: '192.168.1.1',
+    vendor: 'SNR',
+    driftStatus: 'drifted',
+    lastDriftRunningConfig: 'hostname SW-CORE-DIST\nvlan 999\n name Unauthorized\ninterface Vlan1\n ip address 192.168.1.1 255.255.255.0'
+  };
+
+  const backups = [
+    {
+      id: 'b-golden',
+      switchId: 'sw-drifted',
+      isGolden: true,
+      content: 'hostname SW-CORE-DIST\ninterface Vlan1\n ip address 192.168.1.1 255.255.255.0',
+      timestamp: new Date().toISOString()
+    }
+  ];
+
+  const mockStorage = {
+    getSwitches: () => [sw],
+    getBackups: () => backups,
+    data: { driftSchedule: { enabled: true } }
+  };
+  service.storage = mockStorage;
+
+  const report = await service.getFleetDriftReport();
+  assert.equal(report.driftedCount, 1);
+  const driftedItem = report.driftedSwitches[0];
+  assert.equal(driftedItem.switchId, 'sw-drifted');
+  assert.ok(driftedItem.rollbackScript);
+  assert.equal(driftedItem.isRollbackSafe, true); // Safe because it reverts vlan 999 without touching 192.168.1.1
+  assert.equal(driftedItem.guardrailReason, null);
+
+  service.stopScheduler();
+});

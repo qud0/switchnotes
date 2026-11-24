@@ -16,6 +16,7 @@ export default function DashboardView({
   onOpenAuditModal,
   onOpenMacDiscovery,
   onOpenPoeModal,
+  onOpenDriftRadar,
   theme = 'dark'
 }) {
   const [loading, setLoading] = useState(false);
@@ -23,21 +24,24 @@ export default function DashboardView({
   const [switchPingData, setSwitchPingData] = useState(null);
   const [events, setEvents] = useState([]);
   const [singlePingLoading, setSinglePingLoading] = useState({});
+  const [driftStatus, setDriftStatus] = useState(null);
 
   const isLight = theme === 'light';
 
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      const [health, pingRes, evtData] = await Promise.all([
+      const [health, pingRes, evtData, driftData] = await Promise.all([
         api.getNetworkHealth(),
         api.pingAllSwitches(),
-        api.getNetworkEvents()
+        api.getNetworkEvents(),
+        api.getDriftStatus().catch(() => null)
       ]);
       setHealthData(health);
       setSwitchPingData(pingRes);
       const list = Array.isArray(evtData) ? evtData : (Array.isArray(evtData?.events) ? evtData.events : []);
       setEvents(list);
+      if (driftData) setDriftStatus(driftData);
     } catch (err) {
       console.error('Ошибка загрузки данных дашборда:', err);
     } finally {
@@ -152,6 +156,28 @@ export default function DashboardView({
               </button>
             )}
 
+            {onOpenDriftRadar && (
+              <button
+                onClick={onOpenDriftRadar}
+                className={`h-9 px-3.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  driftStatus?.drifted > 0
+                    ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 hover:bg-rose-500/30 ring-1 ring-rose-400/50 animate-pulse'
+                    : isLight
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                }`}
+                title="Радар дрифта конфигураций и 1-клик откат к Golden Baseline"
+              >
+                <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
+                <span>Радар дрифта</span>
+                {driftStatus?.drifted > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-rose-600 text-white">
+                    {driftStatus.drifted}
+                  </span>
+                )}
+              </button>
+            )}
+
             <button
               onClick={loadDashboardData}
               disabled={loading}
@@ -163,6 +189,43 @@ export default function DashboardView({
           </div>
         </div>
       </div>
+
+      {/* Config Drift Alert Banner if any drift detected */}
+      {driftStatus?.drifted > 0 && onOpenDriftRadar && (
+        <div
+          onClick={onOpenDriftRadar}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onOpenDriftRadar();
+            }
+          }}
+          className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/40 flex items-center justify-between cursor-pointer hover:bg-amber-500/15 transition-all shadow-md text-xs"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">
+              <ShieldAlert className="w-5 h-5 animate-pulse text-amber-400" />
+            </div>
+            <div>
+              <div className="font-bold text-amber-300 flex items-center gap-2">
+                <span>Обнаружен дрифт конфигураций на {driftStatus.drifted} коммутаторах!</span>
+                <span className="px-2 py-0.2 rounded-full text-[10px] font-mono bg-rose-600 text-white font-bold">
+                  2-Way Sync
+                </span>
+              </div>
+              <div className="text-slate-400 text-[11px] mt-0.5">
+                Нажмите для просмотра различий diff и выполнения безопасного отката к Golden Baseline с защитой Guardrails
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 text-amber-400 font-semibold shrink-0">
+            <span>Радар дрифта</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

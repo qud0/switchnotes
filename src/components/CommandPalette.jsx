@@ -40,6 +40,7 @@ export function CommandPalette({
   onOpenAuditModal,
   onOpenDiscoveryModal,
   onOpenPoeModal,
+  onOpenDriftRadar,
   onOpenTroubleshoot,
   onToggleTheme,
   theme = 'dark'
@@ -98,6 +99,13 @@ export function CommandPalette({
       category: 'Действия',
       icon: Radio,
       action: () => onOpenDiscoveryModal?.()
+    },
+    {
+      id: 'act-drift-radar',
+      label: 'Радар дрифта конфигураций (Golden Baseline & Auto-Rollback)',
+      category: 'Действия',
+      icon: ShieldAlert,
+      action: () => onOpenDriftRadar?.()
     },
     {
       id: 'act-poe',

@@ -60,6 +60,7 @@ export function Header({
   onOpenDiscoveryModal,
   onOpenConfigTemplatesModal,
   onOpenWebSerial,
+  onOpenDriftRadar,
   unreadAlertsCount = 0,
   auditIssuesCount = 0,
   auditHealthScore = 100,
@@ -463,6 +464,25 @@ export function Header({
                       <div>
                         <div className="font-semibold">PoE Бюджет питания</div>
                         <div className="text-[10px] text-slate-400">Расчёт ватт, 802.3af/at/bt стандарты</div>
+                      </div>
+                    </button>
+                  )}
+
+                  {/* Config Drift Radar */}
+                  {onOpenDriftRadar && (
+                    <button
+                      onClick={() => { onOpenDriftRadar(); setToolsMenuOpen(false); }}
+                      className={`w-full px-2.5 py-2 rounded-xl text-left flex items-center gap-2 transition cursor-pointer ${
+                        isLight ? 'hover:bg-slate-100' : 'hover:bg-slate-800'
+                      }`}
+                    >
+                      <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
+                      <div>
+                        <div className="font-semibold flex items-center gap-1.5">
+                          Радар дрифта конфигураций
+                          <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono">2-Way Sync</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400">Автоопрос сети по расписанию и откат к Golden Baseline</div>
                       </div>
                     </button>
                   )}
@@ -920,6 +940,15 @@ export function Header({
                     >
                       <Zap className="w-4 h-4 text-amber-400 shrink-0" />
                       <span>PoE Бюджет</span>
+                    </button>
+                  )}
+                  {onOpenDriftRadar && (
+                    <button
+                      onClick={() => { onOpenDriftRadar(); setMobileMoreOpen(false); }}
+                      className="w-full px-2.5 py-2 rounded-xl text-left flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                    >
+                      <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
+                      <span>Радар дрифта конфигураций</span>
                     </button>
                   )}
                   {onOpenConfigTemplatesModal && (
