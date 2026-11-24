@@ -103,6 +103,12 @@ export function ConfigBackupModal({
   const [configSearch, setConfigSearch] = useState('');
   const [copied, setCopied] = useState(false);
 
+  // Drift Radar State
+  const [driftLoading, setDriftLoading] = useState(false);
+  const [driftResult, setDriftResult] = useState(null);
+  const [isAcceptingDrift, setIsAcceptingDrift] = useState(false);
+  const [isRollingBackDrift, setIsRollingBackDrift] = useState(false);
+
   // Load backups on mount or switch change
   const loadBackups = async () => {
     setLoadingBackups(true);
@@ -162,6 +168,90 @@ export function ConfigBackupModal({
       previousDate: new Date(previous.timestamp).toLocaleDateString('ru-RU')
     };
   }, [backups]);
+
+  // Golden Baseline for Config Drift Radar
+  const goldenBackup = useMemo(() => {
+    return backups.find(b => b.isGolden) || backups[backups.length - 1] || backups[0] || null;
+  }, [backups]);
+
+  // Active Drift Diff between Golden Baseline and Current Running Config
+  const activeDriftDiff = useMemo(() => {
+    const running = driftResult?.runningConfig || switchData.lastDriftRunningConfig;
+    if (!goldenBackup || !running) return null;
+    return computeConfigDiff(goldenBackup.content, running);
+  }, [goldenBackup, driftResult, switchData.lastDriftRunningConfig]);
+
+  const handleCheckDrift = async () => {
+    setDriftLoading(true);
+    try {
+      const res = await api.triggerDriftCheck(switchData.id);
+      setDriftResult(res);
+      await loadBackups();
+      toast?.success(
+        res.driftStatus === 'drifted'
+          ? `Дрифт обнаружен: +${res.diff?.addedCount || 0} / -${res.diff?.removedCount || 0} строк`
+          : 'Конфигурация коммутатора синхронизирована с эталоном!'
+      );
+    } catch (err) {
+      toast?.error(`Ошибка проверки дрифта: ${err.message}`);
+    } finally {
+      setDriftLoading(false);
+    }
+  };
+
+  const handleReconcileAccept = async () => {
+    if (!window.confirm('Утвердить текущую работающую конфигурацию коммутатора как новый эталон (Golden Baseline)?')) {
+      return;
+    }
+    setIsAcceptingDrift(true);
+    try {
+      await api.reconcileAccept(switchData.id);
+      toast?.success('Текущая конфигурация утверждена как Golden Baseline!');
+      await loadBackups();
+      setDriftResult(null);
+    } catch (err) {
+      toast?.error(`Ошибка принятия эталона: ${err.message}`);
+    } finally {
+      setIsAcceptingDrift(false);
+    }
+  };
+
+  const handleReconcileRollback = async () => {
+    const running = driftResult?.runningConfig || switchData.lastDriftRunningConfig;
+    if (!goldenBackup || !running) {
+      toast?.error('Не найден эталон или текущая конфигурация для отката');
+      return;
+    }
+
+    const driftDiff = computeConfigDiff(goldenBackup.content, running);
+    const rb = generateRollbackScript(driftDiff.rows, switchData.vendor || 'SNR');
+
+    if (!rb || rb.rollbackCommandsCount === 0) {
+      toast?.info('Нет команд для отката: конфигурации совпадают');
+      return;
+    }
+
+    const commands = rb.script
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith('!') && !l.startsWith('#'));
+
+    if (!window.confirm(`Вы уверены, что хотите выполнить безопасный откат (${commands.length} команд) на ${switchData.name}? Guardrails заблокируют любые попытки удалить IP-адрес управления (${switchData.ip}).`)) {
+      return;
+    }
+
+    setIsRollingBackDrift(true);
+    try {
+      const res = await api.reconcileRollback(switchData.id, { commands });
+      toast?.success(res.message || 'Откат успешно выполнен и сохранен в NVRAM!');
+      await loadBackups();
+      setDriftResult(null);
+    } catch (err) {
+      toast?.error(`Ошибка отката: ${err.message}`);
+    } finally {
+      setIsRollingBackDrift(false);
+    }
+  };
 
   // Rollback state
   const [showRollbackModal, setShowRollbackModal] = useState(false);
@@ -572,6 +662,27 @@ export function ConfigBackupModal({
               </button>
 
               <button
+                onClick={() => setActiveTab('drift')}
+                className={`h-8 px-3 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeTab === 'drift'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
+                }`}
+              >
+                <ShieldAlert className="w-3.5 h-3.5" />
+                <span>Радар дрифта</span>
+                {switchData.driftStatus === 'drifted' || driftResult?.driftStatus === 'drifted' ? (
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 font-mono text-[9px] font-bold animate-pulse">
+                    ⚠️ Drift
+                  </span>
+                ) : switchData.driftStatus === 'in_sync' || driftResult?.driftStatus === 'in_sync' ? (
+                  <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 font-mono text-[9px]">
+                    ✓ Sync
+                  </span>
+                ) : null}
+              </button>
+
+              <button
                 onClick={() => setActiveTab('cli')}
                 className={`h-8 px-3 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
                   activeTab === 'cli'
@@ -805,6 +916,11 @@ export function ConfigBackupModal({
                               <span className="font-bold font-mono text-slate-900 dark:text-white">
                                 {idx === 0 ? 'Текущая версия' : `Ревизия #${backups.length - idx}`}
                               </span>
+                              {b.isGolden && (
+                                <span className="px-1.5 py-0.2 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[9px] font-mono font-bold" title="Утвержденный эталон (Golden Baseline)">
+                                  ⭐ Эталон
+                                </span>
+                              )}
                             </div>
                             <span className="text-[10px] text-slate-400 font-mono">
                               {dateStr}
@@ -1174,7 +1290,203 @@ export function ConfigBackupModal({
             </div>
           )}
 
-          {/* TAB 3: CLI RUNNER / SCRIPT EXECUTION */}
+          {/* TAB: CONFIG DRIFT RADAR & 2-WAY SYNC */}
+          {activeTab === 'drift' && (
+            <div className="flex-1 overflow-hidden flex flex-col bg-slate-950 text-slate-100">
+              {/* Drift Top Action & Status Bar */}
+              <div className={`p-3 border-b flex flex-wrap items-center justify-between gap-3 text-xs shrink-0 ${
+                isLight ? 'bg-slate-100 border-slate-200 text-slate-800' : 'bg-slate-900 border-slate-800 text-slate-200'
+              }`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <ShieldAlert className="w-4 h-4 text-amber-500" />
+                    <span>Радар дрифта конфигурации</span>
+                  </div>
+                  <span className="text-slate-500">•</span>
+                  <span className="font-mono text-[11px] text-slate-400">
+                    {switchData.vendor} {switchData.model} ({switchData.ip})
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-[10px] flex items-center gap-1" title="Guardrails предотвращают случайное удаление IP управления и дефолтного шлюза">
+                    <Lock className="w-2.5 h-2.5" />
+                    <span>Guardrails активны ({switchData.ip})</span>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleCheckDrift}
+                    disabled={driftLoading}
+                    className="h-7 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer transition-all"
+                    title="Запустить немедленный опрос running-config коммутатора по SSH"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${driftLoading ? 'animate-spin' : ''}`} />
+                    <span>{driftLoading ? 'Проверка...' : 'Проверить дрифт'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleReconcileAccept}
+                    disabled={isAcceptingDrift || (!activeDriftDiff || activeDriftDiff.isIdentical)}
+                    className="h-7 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer transition-all"
+                    title="Утвердить текущие изменения на свитче как новый эталон (Golden Baseline)"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{isAcceptingDrift ? 'Принятие...' : 'Принять в базу'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleReconcileRollback}
+                    disabled={isRollingBackDrift || (!activeDriftDiff || activeDriftDiff.isIdentical)}
+                    className="h-7 px-3 rounded-lg bg-linear-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 disabled:opacity-40 text-white font-semibold flex items-center gap-1.5 shadow-md shadow-rose-500/20 cursor-pointer transition-all"
+                    title="Выполнить безопасный откат настроек свитча к эталону с защитой Guardrails"
+                  >
+                    <RotateCcw className={`w-3.5 h-3.5 ${isRollingBackDrift ? 'animate-spin' : ''}`} />
+                    <span>{isRollingBackDrift ? 'Откат...' : 'Откатить на свитче'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Banner */}
+              {(switchData.driftStatus === 'drifted' || driftResult?.driftStatus === 'drifted') ? (
+                <div className="px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/30 text-amber-300 text-xs flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>
+                      <strong className="text-white">Обнаружен дрифт конфигурации:</strong> на коммутаторе имеются неавторизованные расхождения с эталоном.
+                      {activeDriftDiff && (
+                        <> Добавлено: <span className="text-emerald-400 font-mono font-bold">+{activeDriftDiff.stats.added}</span>, Удалено: <span className="text-rose-400 font-mono font-bold">-{activeDriftDiff.stats.removed}</span> строк.</>
+                      )}
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-mono text-slate-400">
+                    Эталон: {goldenBackup ? new Date(goldenBackup.timestamp).toLocaleDateString('ru-RU') : 'Авто'}
+                  </span>
+                </div>
+              ) : (switchData.driftStatus === 'in_sync' || driftResult?.driftStatus === 'in_sync') ? (
+                <div className="px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>
+                      <strong className="text-white">Конфигурация синхронизирована:</strong> коммутатор полностью соответствует эталону (Golden Baseline).
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-mono text-slate-400">
+                    Статус: ✓ 100% In Sync
+                  </span>
+                </div>
+              ) : (
+                <div className="px-4 py-2 bg-blue-500/10 border-b border-blue-500/20 text-blue-300 text-xs flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-blue-400 shrink-0" />
+                    <span>Статус дрифта ожидает проверки. Нажмите «Проверить дрифт» для опроса свитча.</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Diff Code Area */}
+              <div className="flex-1 overflow-auto p-3 font-mono text-xs leading-relaxed select-text">
+                {activeDriftDiff ? (
+                  activeDriftDiff.isIdentical ? (
+                    <div className="h-full flex flex-col items-center justify-center p-8 text-center space-y-3">
+                      <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                        <CheckCircle2 className="w-6 h-6" />
+                      </div>
+                      <h4 className="text-sm font-bold text-white">Полное соответствие эталону</h4>
+                      <p className="text-xs text-slate-400 max-w-md">
+                        Текущий running-config на коммутаторе <strong>{switchData.name}</strong> полностью идентичен утвержденному Golden Baseline. Несанкционированных изменений не зафиксировано.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 min-w-[700px]">
+                      {/* Left Pane: Golden Baseline */}
+                      <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950/80">
+                        <div className="px-3 py-1.5 bg-slate-900 border-b border-slate-800 text-[11px] text-amber-400 font-bold flex items-center justify-between">
+                          <span className="flex items-center gap-1">
+                            <span>⭐ Эталон (Golden Baseline)</span>
+                          </span>
+                          <span className="text-slate-400 font-mono">{activeDriftDiff.stats.totalA} строк</span>
+                        </div>
+                        <div className="p-2 space-y-0.5">
+                          {activeDriftDiff.rows.map((row, idx) => {
+                            const isRemoved = row.type === 'removed';
+                            const isAdded = row.type === 'added';
+                            return (
+                              <div
+                                key={idx}
+                                className={`flex items-start px-1 rounded-xs ${
+                                  isRemoved ? 'bg-rose-950/50 text-rose-300 font-medium' :
+                                  isAdded ? 'opacity-20 select-none' : 'text-slate-300 hover:bg-slate-900'
+                                }`}
+                              >
+                                <span className="w-8 shrink-0 text-slate-600 select-none text-right pr-2 text-[10px]">
+                                  {row.lineA || '·'}
+                                </span>
+                                <span className="flex-1 break-all">
+                                  {isRemoved ? `- ${row.textA}` : (row.textA || ' ')}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Right Pane: Current Running Config */}
+                      <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950/80">
+                        <div className="px-3 py-1.5 bg-slate-900 border-b border-slate-800 text-[11px] text-emerald-400 font-bold flex items-center justify-between">
+                          <span className="flex items-center gap-1">
+                            <span>⚡ Текущий Running-Config ({switchData.ip})</span>
+                          </span>
+                          <span className="text-slate-400 font-mono">{activeDriftDiff.stats.totalB} строк</span>
+                        </div>
+                        <div className="p-2 space-y-0.5">
+                          {activeDriftDiff.rows.map((row, idx) => {
+                            const isAdded = row.type === 'added';
+                            const isRemoved = row.type === 'removed';
+                            return (
+                              <div
+                                key={idx}
+                                className={`flex items-start px-1 rounded-xs ${
+                                  isAdded ? 'bg-emerald-950/50 text-emerald-300 font-medium' :
+                                  isRemoved ? 'opacity-20 select-none' : 'text-slate-300 hover:bg-slate-900'
+                                }`}
+                              >
+                                <span className="w-8 shrink-0 text-slate-600 select-none text-right pr-2 text-[10px]">
+                                  {row.lineB || '·'}
+                                </span>
+                                <span className="flex-1 break-all">
+                                  {isAdded ? `+ ${row.textB}` : (row.textB || ' ')}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center p-8 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-slate-400">
+                      <RefreshCw className="w-6 h-6" />
+                    </div>
+                    <h4 className="text-sm font-bold text-white">Данные дрифта еще не загружены</h4>
+                    <p className="text-xs text-slate-400 max-w-sm">
+                      Нажмите кнопку «Проверить дрифт», чтобы подключиться к оборудованию по SSH и построить интерактивное сравнение с эталоном.
+                    </p>
+                    <button
+                      onClick={handleCheckDrift}
+                      disabled={driftLoading}
+                      className="h-8 px-4 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-sm cursor-pointer"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${driftLoading ? 'animate-spin' : ''}`} />
+                      <span>Запустить опрос дрифта</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {activeTab === 'cli' && (
             <div className="flex-1 overflow-hidden flex flex-col p-4 space-y-4">
               <div className="flex items-center justify-between">

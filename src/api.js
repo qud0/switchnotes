@@ -1267,5 +1267,47 @@ export const api = {
       throw new Error(err.error || 'Ошибка синхронизации с Active Directory');
     }
     return res.json();
+  },
+
+  // Config Drift Radar & 2-Way Sync
+  getDriftStatus: async () => {
+    const res = await fetch(`${API_BASE}/drift/status`);
+    if (!res.ok) throw new Error('Не удалось получить статус Config Drift Radar');
+    return res.json();
+  },
+
+  triggerDriftCheck: async (switchId) => {
+    const res = await fetch(`${API_BASE}/drift/${switchId}/check`, {
+      method: 'POST'
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка проверки дрифта конфигурации');
+    }
+    return res.json();
+  },
+
+  reconcileAccept: async (switchId) => {
+    const res = await fetch(`${API_BASE}/drift/${switchId}/reconcile-accept`, {
+      method: 'POST'
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка принятия эталона конфигурации');
+    }
+    return res.json();
+  },
+
+  reconcileRollback: async (switchId, options = {}) => {
+    const res = await fetch(`${API_BASE}/drift/${switchId}/reconcile-rollback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка отката конфигурации');
+    }
+    return res.json();
   }
 };

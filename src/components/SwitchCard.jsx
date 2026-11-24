@@ -79,6 +79,22 @@ export function SwitchCard({ switchItem, allSwitches = [], isSelected, onSelect,
                   {switchItem.badge}
                 </span>
               )}
+              {switchItem.driftStatus === 'drifted' ? (
+                <span
+                  className="inline-flex items-center gap-1 text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded-md bg-amber-500/20 text-amber-500 border border-amber-500/30 shrink-0"
+                  title={`Дрифт конфигурации${switchItem.lastDriftDiff ? ` (+${switchItem.lastDriftDiff.addedCount}/-${switchItem.lastDriftDiff.removedCount})` : ''}`}
+                >
+                  <AlertTriangle className="w-2.5 h-2.5" />
+                  <span>Drift {switchItem.lastDriftDiff ? `(+${switchItem.lastDriftDiff.addedCount}/-${switchItem.lastDriftDiff.removedCount})` : ''}</span>
+                </span>
+              ) : switchItem.driftStatus === 'in_sync' ? (
+                <span
+                  className="inline-flex items-center gap-0.5 text-[9px] font-mono text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded-md shrink-0"
+                  title="Конфигурация синхронизирована с эталоном (Golden Baseline)"
+                >
+                  ✓ Sync
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
