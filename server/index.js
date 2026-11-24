@@ -28,6 +28,7 @@ import { runSwitchCableTest } from './cableTestService.js';
 import { getSwitchPortDdm, getSwitchAllDdm } from './ddmService.js';
 import { analyzeVlanProvisioning, applyVlanProvisioning, executeVlanProvisioningSsh } from './vlanWizardService.js';
 import { eventPulseDaemon } from './eventPulseDaemon.js';
+import { configDriftService } from './configDriftService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1471,6 +1472,62 @@ app.post('/api/events/simulate', (req, res) => {
   }
 });
 
+// ==================== CONFIG DRIFT RADAR API ====================
+
+// Get overall Config Drift Radar status and metrics
+app.get('/api/drift/status', (req, res) => {
+  try {
+    res.json(configDriftService.getStatus());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Immediate drift check for a specific switch
+app.post('/api/drift/:switchId/check', requireRole('engineer'), async (req, res) => {
+  try {
+    const result = await configDriftService.checkSwitchDrift(req.params.switchId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2-Way Sync: Reconcile Accept (Adopt running config as new Golden Baseline)
+app.post('/api/drift/:switchId/reconcile-accept', requireRole('engineer'), async (req, res) => {
+  try {
+    const result = await configDriftService.reconcileAccept(req.params.switchId);
+    storage.logAction({
+      entity: 'drift',
+      action: 'reconcile_accept',
+      title: `Принят эталон конфигурации коммутатора ID ${req.params.switchId}`,
+      details: `Оператор утвердил текущую конфигурацию как Golden Baseline`,
+      author: req.user?.username || 'admin'
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2-Way Sync: Reconcile Rollback (Revert switch to baseline with Guardrails)
+app.post('/api/drift/:switchId/reconcile-rollback', requireRole('admin'), async (req, res) => {
+  try {
+    const { commands, force } = req.body || {};
+    const result = await configDriftService.reconcileRollback(req.params.switchId, { commands, force });
+    storage.logAction({
+      entity: 'drift',
+      action: 'reconcile_rollback',
+      title: `Выполнен откат конфигурации коммутатора ID ${req.params.switchId}`,
+      details: `Выполнено ${result.executedCommandsCount} команд отката с проверкой Guardrails`,
+      author: req.user?.username || 'admin'
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get rolling telemetry history for a specific switch & port
 app.get('/api/switches/:id/ports/:portNum/history', (req, res) => {
   try {
@@ -1922,7 +1979,8 @@ server.listen(PORT, () => {
     backupScheduler.init();
     snmpMonitorDaemon.init(storage);
     adSyncService.init(storage);
-    eventPulseDaemon.init(server, storage);
+    configDriftService.init(storage, eventPulseDaemon);
+    eventPulseDaemon.init(server, storage, { configDriftService });
   } catch (err) {
     console.error('[Services] Ошибка инициализации фоновых служб:', err.message);
   }

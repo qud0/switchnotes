@@ -32,6 +32,7 @@ export class EventPulseDaemon {
     this.packetsReceived = 0;
     this.alertsCreated = 0;
     this.wsClients = new Set();
+    this.configDriftService = null;
 
     this.flapDetector = new LinkFlapDetector(60000, 3);
     this.rateLimiter = new EventRateLimiter();
@@ -53,6 +54,7 @@ export class EventPulseDaemon {
    */
   async init(httpServer, storage, options = {}) {
     this.storage = storage;
+    if (options.configDriftService) this.configDriftService = options.configDriftService;
     if (options.syslogPort) this.syslogPort = options.syslogPort;
     if (options.trapPort) this.trapPort = options.trapPort;
 
@@ -234,6 +236,13 @@ export class EventPulseDaemon {
     const switchId = matchedSwitch ? matchedSwitch.id : null;
     const switchName = matchedSwitch ? matchedSwitch.name : cleanIp;
 
+    // Trigger Config Drift Radar scan if config_change detected
+    if (parsed.type === 'config_change' && switchId) {
+      if (this.configDriftService?.enqueueDriftCheck) {
+        this.configDriftService.enqueueDriftCheck(switchId);
+      }
+    }
+
     // Check link flap detection
     let isFlapping = false;
     let flapCount = 0;
@@ -355,6 +364,12 @@ export class EventPulseDaemon {
     if (this.storage && typeof this.storage.addAlert === 'function') {
       saved = this.storage.addAlert(alertPayload) || alertPayload;
       this.alertsCreated++;
+    }
+
+    if (type === 'config_change' && targetSwitch?.id) {
+      if (this.configDriftService?.enqueueDriftCheck) {
+        this.configDriftService.enqueueDriftCheck(targetSwitch.id, 200);
+      }
     }
 
     this.broadcastEvent(saved);

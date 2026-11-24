@@ -91,3 +91,29 @@ test('EventPulseDaemon getStatus reports listening status and counters', () => {
   assert.equal(typeof status.trapPort, 'number');
   assert.equal(typeof status.packetsReceived, 'number');
 });
+
+test('EventPulseDaemon triggers configDriftService.enqueueDriftCheck on config_change event', () => {
+  const mockStorage = {
+    getSwitches: () => [
+      { id: 'sw-1', name: 'SNR-SWITCH-01', ip: '192.168.1.10', vendor: 'SNR' }
+    ],
+    addAlert: (alert) => alert
+  };
+
+  const enqueued = [];
+  const mockDriftService = {
+    enqueueDriftCheck: (switchId) => enqueued.push(switchId)
+  };
+
+  const daemon = new EventPulseDaemon();
+  daemon.storage = mockStorage;
+  daemon.configDriftService = mockDriftService;
+
+  const rawMsg = '%SYS-5-CONFIG_I: Configured from console by admin on vty0';
+  const alert = daemon.processMessage(rawMsg, '192.168.1.10');
+
+  assert.ok(alert);
+  assert.equal(alert.type, 'config_change');
+  assert.deepEqual(enqueued, ['sw-1']);
+});
+
