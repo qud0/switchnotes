@@ -1,8 +1,8 @@
 import React from 'react';
-import { Server, MapPin, Globe, Zap, Link as LinkIcon, AlertTriangle, Terminal, Wrench } from 'lucide-react';
+import { Server, MapPin, Globe, Zap, Link as LinkIcon, AlertTriangle, Terminal, Wrench, ShieldAlert } from 'lucide-react';
 import { checkVlanMismatch } from '../utils/vlanMismatch';
 
-export function SwitchCard({ switchItem, allSwitches = [], isSelected, onSelect, onOpenWebSsh, onOpenTroubleshoot, onOpenPoeModal, theme = 'dark' }) {
+export function SwitchCard({ switchItem, allSwitches = [], isSelected, onSelect, onOpenWebSsh, onOpenTroubleshoot, onOpenPoeModal, onOpenBlastRadiusModal, theme = 'dark' }) {
   const ports = switchItem.ports || [];
   const accessCount = ports.filter(p => p.mode === 'access').length;
   const trunkCount = ports.filter(p => p.mode === 'trunk').length;
@@ -100,6 +100,23 @@ export function SwitchCard({ switchItem, allSwitches = [], isSelected, onSelect,
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
+          {onOpenBlastRadiusModal && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenBlastRadiusModal(switchItem.id);
+              }}
+              className={`p-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
+                isLight
+                  ? 'bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-800'
+                  : 'bg-slate-800/90 hover:bg-rose-600/30 border-slate-750 text-rose-400 hover:text-rose-300'
+              }`}
+              title="VLAN Blast Radius Simulator: симуляция изменений портов и оценка рисков"
+            >
+              <ShieldAlert className="w-3.5 h-3.5" />
+            </button>
+          )}
           {onOpenTroubleshoot && (
             <button
               type="button"

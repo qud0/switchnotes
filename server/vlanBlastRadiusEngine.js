@@ -6,6 +6,8 @@
  * and generates safe vendor CLI scripts for SNR NAG and MikroTik RouterOS.
  */
 
+import { executeSshCommand } from './backupService.js';
+
 /**
  * Converts IPv4 dotted string to 32-bit unsigned integer.
  * @param {string} ip
@@ -603,6 +605,125 @@ export class VlanBlastRadiusEngine {
       cliScript,
       proposal
     };
+  }
+
+  /**
+   * Applies the simulated VLAN change to storage and optionally to hardware via SSH.
+   * Enforces Guardrails: rejects CRITICAL risk proposals unless proposal.force is true.
+   * @param {Object} proposal
+   * @param {Object} [options]
+   * @param {Object} [options.user]
+   * @returns {Promise<Object>}
+   */
+  async apply(proposal, options = {}) {
+    // 1. Run pre-flight simulation
+    const sim = this.simulate(proposal);
+
+    // 2. Enforce Guardrails
+    if (sim.riskLevel === 'CRITICAL' && !proposal.force) {
+      throw new Error(`Изменение заблокировано Guardrails: ${sim.guardrailViolations.join('; ') || 'Высокий риск изоляции сети'}. Для применения требуется подтверждение force: true.`);
+    }
+
+    // 3. Apply to Database
+    const sw = this.storage?.getSwitchById ? this.storage.getSwitchById(proposal.switchId) : null;
+    if (!sw) throw new Error('Коммутатор не найден в базе данных');
+
+    const port = (sw.ports || []).find(p => String(p.id) === String(proposal.portId) || String(p.number) === String(proposal.portId));
+    if (!port) throw new Error(`Порт ${proposal.portId} не найден`);
+
+    const targetVid = Number(proposal.targetVlanId);
+
+    if (proposal.action === 'change_access_vlan') {
+      port.vlan = targetVid;
+    } else if (proposal.action === 'remove_trunk_vlan') {
+      port.taggedVlans = (port.taggedVlans || []).map(Number).filter(v => v !== targetVid);
+    } else if (proposal.action === 'add_trunk_vlan') {
+      const cur = new Set((port.taggedVlans || []).map(Number));
+      cur.add(targetVid);
+      port.taggedVlans = Array.from(cur);
+    } else if (proposal.action === 'set_trunk_vlans') {
+      port.taggedVlans = (proposal.targetVlans || []).map(Number);
+    }
+
+    if (this.storage?.updateSwitch) {
+      this.storage.updateSwitch(sw.id, { ports: sw.ports });
+    }
+
+    // Dual-ended sync on peer port in database
+    if (proposal.syncPeerPort && port.linkedSwitchId && port.linkedPortId) {
+      const peerSw = this.storage?.getSwitchById(port.linkedSwitchId);
+      if (peerSw) {
+        const peerPort = (peerSw.ports || []).find(p => String(p.id) === String(port.linkedPortId) || String(p.number) === String(port.linkedPortId));
+        if (peerPort) {
+          if (proposal.action === 'remove_trunk_vlan') {
+            peerPort.taggedVlans = (peerPort.taggedVlans || []).map(Number).filter(v => v !== targetVid);
+          } else if (proposal.action === 'add_trunk_vlan') {
+            const peerCur = new Set((peerPort.taggedVlans || []).map(Number));
+            peerCur.add(targetVid);
+            peerPort.taggedVlans = Array.from(peerCur);
+          } else if (proposal.action === 'set_trunk_vlans') {
+            peerPort.taggedVlans = (proposal.targetVlans || []).map(Number);
+          }
+          if (this.storage?.updateSwitch) {
+            this.storage.updateSwitch(peerSw.id, { ports: peerSw.ports });
+          }
+        }
+      }
+    }
+
+    // 4. Hardware execution via SSH (if requested)
+    let hardwareExecuted = false;
+    let hardwareOutput = null;
+    if (proposal.applyToHardware) {
+      // Execute peer first (downstream first) if dual-ended sync
+      if (proposal.syncPeerPort && sim.cliScript?.peerCommands?.length && port.linkedSwitchId) {
+        const peerSw = this.storage?.getSwitchById(port.linkedSwitchId);
+        if (peerSw && peerSw.ip) {
+          await this._executeSwitchScript(peerSw, sim.cliScript.peerCommands, proposal.credentials);
+        }
+      }
+
+      // Then execute target switch
+      if (sim.cliScript?.commands?.length && sw.ip) {
+        hardwareOutput = await this._executeSwitchScript(sw, sim.cliScript.commands, proposal.credentials);
+        hardwareExecuted = true;
+      }
+    }
+
+    return {
+      success: true,
+      riskLevel: sim.riskLevel,
+      summary: sim.summary,
+      hardwareExecuted,
+      hardwareOutput,
+      updatedSwitch: sw,
+      executedCommands: sim.cliScript.commands
+    };
+  }
+
+  /**
+   * Helper to execute script lines over SSH.
+   * @private
+   */
+  async _executeSwitchScript(switchItem, commands = [], credentials = {}) {
+    const creds = {
+      username: switchItem.sshUsername || credentials.username || process.env.DEFAULT_SWITCH_USER || 'admin',
+      password: switchItem.sshPassword || credentials.password || process.env.DEFAULT_SWITCH_PASS || '',
+      port: Number(switchItem.sshPort || credentials.port || 22),
+      privateKey: switchItem.sshPrivateKey || credentials.privateKey || null
+    };
+
+    const cmdStr = commands.join('\n');
+    return executeSshCommand({
+      host: switchItem.ip,
+      port: creds.port,
+      username: creds.username,
+      password: creds.password,
+      privateKey: creds.privateKey,
+      vendor: switchItem.vendor,
+      command: cmdStr,
+      timeout: 10000
+    });
   }
 }
 

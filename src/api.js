@@ -1309,5 +1309,32 @@ export const api = {
       throw new Error(err.error || 'Ошибка отката конфигурации');
     }
     return res.json();
+  },
+
+  // VLAN Blast Radius Simulator
+  simulateVlanChange: async (proposal) => {
+    const res = await fetch(`${API_BASE}/vlan-simulator/simulate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(proposal)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка симуляции изменения VLAN');
+    }
+    return res.json();
+  },
+
+  applyVlanChange: async (payload) => {
+    const res = await fetch(`${API_BASE}/vlan-simulator/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка применения изменения VLAN');
+    }
+    return res.json();
   }
 };

@@ -49,6 +49,7 @@ const ActiveDirectoryModal = lazy(() => import('./components/ActiveDirectoryModa
 const PoeBudgetModal = lazy(() => import('./components/PoeBudgetModal').then(m => ({ default: m.PoeBudgetModal })));
 const NetworkDiscoveryModal = lazy(() => import('./components/NetworkDiscoveryModal').then(m => ({ default: m.NetworkDiscoveryModal })));
 const ConfigTemplateModal = lazy(() => import('./components/ConfigTemplateModal').then(m => ({ default: m.ConfigTemplateModal })));
+const VlanBlastRadiusModal = lazy(() => import('./components/VlanBlastRadiusModal'));
 import LoginModal from './components/LoginModal';
 import UsersModal from './components/UsersModal';
 import { useToast } from './context/ToastContext';
@@ -171,6 +172,8 @@ export default function App() {
   const [poeModalSwitchId, setPoeModalSwitchId] = useState(null);
   const [isDiscoveryModalOpen, setIsDiscoveryModalOpen] = useState(false);
   const [isConfigTemplatesModalOpen, setIsConfigTemplatesModalOpen] = useState(false);
+  const [isBlastRadiusOpen, setIsBlastRadiusOpen] = useState(false);
+  const [blastRadiusSwitchId, setBlastRadiusSwitchId] = useState('');
 
   // Zoom scale state: 70% to 150%
   const [zoomLevel, setZoomLevel] = useState(() => {
@@ -1293,6 +1296,10 @@ export default function App() {
                         setPoeModalSwitchId(swId);
                         setIsPoeModalOpen(true);
                       }}
+                      onOpenBlastRadiusModal={(swId) => {
+                        setBlastRadiusSwitchId(swId);
+                        setIsBlastRadiusOpen(true);
+                      }}
                       theme={theme}
                     />
                   ))}
@@ -1644,6 +1651,17 @@ export default function App() {
             await fetchData();
           }}
           theme={theme}
+        />
+
+        {/* VLAN Blast Radius Simulator Modal */}
+        <VlanBlastRadiusModal
+          isOpen={isBlastRadiusOpen}
+          onClose={() => setIsBlastRadiusOpen(false)}
+          switches={switches}
+          vlans={vlans}
+          theme={theme}
+          initialSwitchId={blastRadiusSwitchId}
+          onDataChanged={fetchData}
         />
 
         {/* Network Auto-Discovery Scanner Modal */}
