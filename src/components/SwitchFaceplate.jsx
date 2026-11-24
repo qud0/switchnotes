@@ -58,6 +58,7 @@ export function SwitchFaceplate({
   onReloadData,
   theme = 'dark'
 }) {
+  const isLight = theme === 'light';
   const [activeTab, setActiveTab] = useState('faceplate'); // 'faceplate' or 'table'
   const [highlightVlanId, setHighlightVlanId] = useState(null);
   const [selectedPortIds, setSelectedPortIds] = useState([]);
@@ -371,8 +372,6 @@ export function SwitchFaceplate({
   const numGroups = layoutMode === '1-row' 
     ? 1 
     : Math.ceil(topRowPorts.length / Math.max(1, Math.floor(groupSize / 2)));
-
-  const isLight = theme === 'light';
 
   if (!switchData) return null;
 
