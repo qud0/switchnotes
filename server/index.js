@@ -29,6 +29,7 @@ import { getSwitchPortDdm, getSwitchAllDdm } from './ddmService.js';
 import { analyzeVlanProvisioning, applyVlanProvisioning, executeVlanProvisioningSsh } from './vlanWizardService.js';
 import { eventPulseDaemon } from './eventPulseDaemon.js';
 import { configDriftService } from './configDriftService.js';
+import { vlanBlastRadiusEngine } from './vlanBlastRadiusEngine.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1528,6 +1529,35 @@ app.post('/api/drift/:switchId/reconcile-rollback', requireRole('admin'), async 
   }
 });
 
+// ==================== VLAN BLAST RADIUS SIMULATOR API ====================
+
+// Simulate hypothetical VLAN change on port/trunk
+app.post('/api/vlan-simulator/simulate', requireRole('engineer'), (req, res) => {
+  try {
+    const result = vlanBlastRadiusEngine.simulate(req.body);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Apply simulated VLAN change with Guardrail verification
+app.post('/api/vlan-simulator/apply', requireRole('engineer'), async (req, res) => {
+  try {
+    const result = await vlanBlastRadiusEngine.apply(req.body, { user: req.user });
+    storage.logAction({
+      entity: 'vlan_simulator',
+      action: 'apply',
+      title: `Применено изменение VLAN на ${req.body.switchId}`,
+      details: result.summary,
+      author: req.user?.username || 'admin'
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Get rolling telemetry history for a specific switch & port
 app.get('/api/switches/:id/ports/:portNum/history', (req, res) => {
   try {
@@ -1979,6 +2009,7 @@ server.listen(PORT, () => {
     backupScheduler.init();
     snmpMonitorDaemon.init(storage);
     adSyncService.init(storage);
+    vlanBlastRadiusEngine.storage = storage;
     configDriftService.init(storage, eventPulseDaemon);
     eventPulseDaemon.init(server, storage, { configDriftService });
   } catch (err) {
