@@ -1418,5 +1418,44 @@ export const api = {
       throw new Error(err.error || 'Ошибка применения изменения VLAN');
     }
     return res.json();
+  },
+
+  // Optics Health & Early Degradation AI
+  getOpticsFleetSummary: async () => {
+    const res = await fetch(`${API_BASE}/optics/fleet-summary`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка загрузки сводки оптики парка');
+    }
+    return res.json();
+  },
+
+  getPortOpticsAnalysis: async (switchId, portId) => {
+    const res = await fetch(`${API_BASE}/optics/switches/${switchId}/ports/${portId}/analysis`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка анализа оптики порта');
+    }
+    return res.json();
+  },
+
+  getOpticsSpans: async () => {
+    const res = await fetch(`${API_BASE}/optics/spans`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка загрузки оптических пролетов');
+    }
+    return res.json();
+  },
+
+  pollOpticsFleet: async () => {
+    const res = await fetch(`${API_BASE}/optics/poll-fleet`, {
+      method: 'POST'
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка опроса оптической телеметрии');
+    }
+    return res.json();
   }
 };

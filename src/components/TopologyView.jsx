@@ -50,6 +50,7 @@ import { api, getAuthToken } from '../api';
 import { useToast } from '../context/ToastContext';
 import VlanWizardModal from './VlanWizardModal';
 import { FirmwareRolloutModal } from './FirmwareRolloutModal';
+import { OpticsHealthModal } from './OpticsHealthModal';
 
 export function TopologyView({
   switches = [],
@@ -138,6 +139,9 @@ export function TopologyView({
 
   // Firmware Multi-Stage Canary Rollout state
   const [isFirmwareModalOpen, setIsFirmwareModalOpen] = useState(false);
+
+  // Optics Health & Early Degradation AI state
+  const [isOpticsModalOpen, setIsOpticsModalOpen] = useState(false);
 
   const handleOpenLldpModal = async (modeOverride) => {
     const mode = modeOverride || stitchMode;
@@ -1364,6 +1368,20 @@ export function TopologyView({
           >
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
             <span>Canary Rollout</span>
+          </button>
+
+          {/* Optics Health & Early Degradation AI Button */}
+          <button
+            onClick={() => setIsOpticsModalOpen(true)}
+            className={`h-9 px-3 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap shadow-xs ${
+              isLight
+                ? 'bg-cyan-50 hover:bg-cyan-100 text-cyan-700 border-cyan-200'
+                : 'bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-400 border-cyan-500/30'
+            }`}
+            title="Раннее обнаружение деградации оптики SFP/SFP+ и анализ асимметрии пролетов"
+          >
+            <Activity className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Optics AI</span>
           </button>
 
           {/* STP / Loop Simulator Toggle */}
@@ -3803,6 +3821,13 @@ export function TopologyView({
           isOpen={isFirmwareModalOpen}
           onClose={() => setIsFirmwareModalOpen(false)}
           switches={switches}
+          theme={theme}
+        />
+
+        {/* Optics Health & Early Degradation AI Modal */}
+        <OpticsHealthModal
+          isOpen={isOpticsModalOpen}
+          onClose={() => setIsOpticsModalOpen(false)}
           theme={theme}
         />
       </div>
