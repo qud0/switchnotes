@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Terminal as TerminalIcon, X, Maximize2, Minimize2, Copy, Download, RefreshCw, Send, Check, Shield, Sliders, Zap, AlertTriangle, Monitor } from 'lucide-react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';

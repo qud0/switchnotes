@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { PortItem } from './PortItem';
 import { VlanBadge } from './VlanBadge';
 import { PortTable } from './PortTable';
