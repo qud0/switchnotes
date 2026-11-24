@@ -35,7 +35,8 @@ import {
   TrendingUp,
   X,
   GitCompare,
-  Wrench
+  Wrench,
+  Type
 } from 'lucide-react';
 import { api } from '../api';
 
@@ -82,6 +83,51 @@ export function SwitchFaceplate({
       localStorage.setItem('switchbook_faceplate_theme', newTheme);
     }
   };
+
+  // Typography Font: 'mono' (Engineering Monospace) | 'sans' (Clean Grotesk Sans) | 'tech' (Industrial DIN / Terminal)
+  const [faceplateFont, setFaceplateFont] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('switchbook_faceplate_font') || 'mono';
+    }
+    return 'mono';
+  });
+
+  const handleFontChange = (newFont) => {
+    setFaceplateFont(newFont);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('switchbook_faceplate_font', newFont);
+    }
+  };
+
+  const fontStyles = useMemo(() => {
+    switch (faceplateFont) {
+      case 'sans':
+        return {
+          vendor: 'font-sans font-black tracking-tight text-[13px]',
+          model: 'font-sans font-bold tracking-tight text-[11px]',
+          ip: 'font-sans font-semibold tracking-tight text-[10px]',
+          leds: 'font-sans font-bold tracking-tight text-[9px]',
+          sfpHeader: 'font-sans font-bold tracking-tight text-[9px]'
+        };
+      case 'tech':
+        return {
+          vendor: 'font-mono font-black uppercase tracking-widest text-[13px]',
+          model: 'font-mono font-bold uppercase tracking-wider text-[11px]',
+          ip: 'font-mono font-semibold tracking-wide text-[10px]',
+          leds: 'font-mono font-extrabold uppercase tracking-widest text-[9px]',
+          sfpHeader: 'font-mono font-extrabold uppercase tracking-widest text-[9px]'
+        };
+      case 'mono':
+      default:
+        return {
+          vendor: 'font-mono font-black uppercase tracking-wider text-[13px]',
+          model: 'font-mono font-semibold text-[11px]',
+          ip: 'font-mono text-[10px]',
+          leds: 'font-mono font-bold text-[9px]',
+          sfpHeader: 'font-mono font-bold uppercase tracking-widest text-[9px]'
+        };
+    }
+  }, [faceplateFont]);
 
   const isMikrotikVendor = String(switchData?.vendor || '').toLowerCase().includes('mikrotik');
 
@@ -741,351 +787,417 @@ export function SwitchFaceplate({
         )}
 
         {/* Toolbar: Stats & Filters */}
-        <div className={`mt-5 pt-4 border-t flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+        <div className={`mt-5 pt-4 border-t space-y-3 ${
           isLight ? 'border-slate-200' : 'border-slate-800/80'
         }`}>
-          {/* Stats Badges */}
-          <div className="flex items-center gap-3 text-xs flex-wrap">
-            <span className="text-slate-500 dark:text-slate-400">
-              Портов: <strong className="font-mono text-slate-900 dark:text-white">{stats.total}</strong>
-            </span>
-            <span className="text-slate-300 dark:text-slate-700">•</span>
-            <span className="text-blue-600 dark:text-blue-400">
-              Access: <strong className="font-mono">{stats.access}</strong>
-            </span>
-            <span className="text-slate-300 dark:text-slate-700">•</span>
-            <span className="text-purple-600 dark:text-purple-400">
-              Trunk: <strong className="font-mono">{stats.trunk}</strong>
-            </span>
-            <span className="text-slate-300 dark:text-slate-700">•</span>
-            <span className="text-cyan-600 dark:text-cyan-400 flex items-center gap-1">
-              <LinkIcon className="w-3 h-3" />
-              Линки: <strong className="font-mono">{stats.linked}</strong>
-            </span>
-            {stats.poe > 0 && (
-              <>
-                <span className="text-slate-300 dark:text-slate-700">•</span>
-                <span className="text-amber-500 flex items-center gap-1.5 font-mono" title={`Использовано ${stats.poeUsedWatts} Вт из ${stats.maxPoeBudget} Вт PoE бюджета`}>
-                  <Zap className="w-3 h-3 fill-amber-500" />
-                  <span>PoE: <strong>{stats.poe}</strong>п ({stats.poeUsedWatts}/{stats.maxPoeBudget}W)</span>
-                  <span className="inline-block w-12 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                    <span
-                      className="block h-full bg-amber-500 rounded-full"
-                      style={{ width: `${Math.min(100, Math.round((stats.poeUsedWatts / stats.maxPoeBudget) * 100))}%` }}
-                    />
+          {/* Row 1: Telemetry Stats on Left, VLAN Highlight & Batch Select on Right */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            {/* Stats Badges */}
+            <div className="flex items-center gap-3 text-xs flex-wrap">
+              <span className="text-slate-500 dark:text-slate-400">
+                Портов: <strong className="font-mono text-slate-900 dark:text-white">{stats.total}</strong>
+              </span>
+              <span className="text-slate-300 dark:text-slate-700">•</span>
+              <span className="text-blue-600 dark:text-blue-400">
+                Access: <strong className="font-mono">{stats.access}</strong>
+              </span>
+              <span className="text-slate-300 dark:text-slate-700">•</span>
+              <span className="text-purple-600 dark:text-purple-400">
+                Trunk: <strong className="font-mono">{stats.trunk}</strong>
+              </span>
+              <span className="text-slate-300 dark:text-slate-700">•</span>
+              <span className="text-cyan-600 dark:text-cyan-400 flex items-center gap-1">
+                <LinkIcon className="w-3 h-3" />
+                Линки: <strong className="font-mono">{stats.linked}</strong>
+              </span>
+              {stats.poe > 0 && (
+                <>
+                  <span className="text-slate-300 dark:text-slate-700">•</span>
+                  <span className="text-amber-500 flex items-center gap-1.5 font-mono" title={`Использовано ${stats.poeUsedWatts} Вт из ${stats.maxPoeBudget} Вт PoE бюджета`}>
+                    <Zap className="w-3 h-3 fill-amber-500" />
+                    <span>PoE: <strong>{stats.poe}</strong>п ({stats.poeUsedWatts}/{stats.maxPoeBudget}W)</span>
+                    <span className="inline-block w-14 h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <span
+                        className="block h-full bg-amber-500 rounded-full"
+                        style={{ width: `${Math.min(100, Math.round((stats.poeUsedWatts / stats.maxPoeBudget) * 100))}%` }}
+                      />
+                    </span>
                   </span>
-                </span>
-              </>
-            )}
-          </div>
-
-          {/* Controls: VLAN Highlight & Batch select */}
-          <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Highlight VLAN feature */}
-            <div className={`flex items-center gap-1.5 border rounded-lg px-2.5 py-1 text-xs ${
-              isLight ? 'bg-slate-50 border-slate-300' : 'bg-slate-950 border-slate-800'
-            }`}>
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span className="text-slate-500 dark:text-slate-400">Подсветить VLAN:</span>
-              <select
-                value={highlightVlanId === null ? '' : highlightVlanId}
-                onChange={(e) => setHighlightVlanId(e.target.value === '' ? null : Number(e.target.value))}
-                className="bg-transparent text-slate-800 dark:text-white font-mono text-xs focus:outline-hidden cursor-pointer"
-              >
-                <option value="" className={isLight ? 'bg-white text-slate-800' : 'bg-slate-900 text-slate-300'}>-- Все порты --</option>
-                {vlans.map((v) => (
-                  <option key={v.id} value={v.id} className={isLight ? 'bg-white text-slate-800' : 'bg-slate-900 text-white'}>
-                    VLAN {v.id} ({v.name})
-                  </option>
-                ))}
-              </select>
-              {highlightVlanId !== null && (
-                <button
-                  onClick={() => setHighlightVlanId(null)}
-                  className="text-slate-400 hover:text-slate-700 dark:hover:text-white text-[11px] ml-1"
-                  title="Сбросить подсветку"
-                >
-                  ✕
-                </button>
+                </>
               )}
             </div>
 
-            {/* Heatmap Overlay Selector */}
-            <div className={`h-8 p-0.5 rounded-lg border flex items-center shrink-0 ${
-              isLight ? 'bg-slate-100 border-slate-300' : 'bg-slate-950 border-slate-800'
-            }`}>
-              <button
-                type="button"
-                onClick={() => setHeatmapMode('none')}
-                className={`h-7 px-2.5 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
-                  heatmapMode === 'none'
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                }`}
-                title="Стандартный режим (подсветка VLAN)"
-              >
-                VLAN
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setHeatmapMode('traffic');
-                  if (!telemetry) handlePollTelemetry();
-                }}
-                className={`h-7 px-2.5 rounded-md text-[11px] font-medium flex items-center gap-1 transition-all cursor-pointer ${
-                  heatmapMode === 'traffic'
-                    ? 'bg-rose-600 text-white shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                }`}
-                title="Тепловая карта трафика портов (пульсация светодиодов: зеленый <10M, желтый 10-100M, оранжевый/красный >500M)"
-              >
-                <Flame className="w-3.5 h-3.5 text-amber-300" />
-                <span>Трафик (Pulse)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setHeatmapMode('poe');
-                  if (!telemetry) handlePollTelemetry();
-                }}
-                className={`h-7 px-2.5 rounded-md text-[11px] font-medium flex items-center gap-1 transition-all cursor-pointer ${
-                  heatmapMode === 'poe'
-                    ? 'bg-amber-600 text-white shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                }`}
-                title="Тепловая карта PoE (нагрузка в Ваттах)"
-              >
-                <Zap className="w-3 h-3" />
-                <span>PoE</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setHeatmapMode('speed')}
-                className={`h-7 px-2.5 rounded-md text-[11px] font-medium flex items-center gap-1 transition-all cursor-pointer ${
-                  heatmapMode === 'speed'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                }`}
-                title="Тепловая карта скорости портов (10G/1G/Down)"
-              >
-                <Activity className="w-3 h-3" />
-                <span>Скорость</span>
-              </button>
-            </div>
-
-            {/* Visual Theme Selector (NOC High-Contrast / Vendor Photorealism / Cyber Blueprint) */}
-            <div className={`h-8 p-0.5 rounded-lg border flex items-center shrink-0 ${
-              isLight ? 'bg-slate-100 border-slate-300' : 'bg-slate-950 border-slate-800'
-            }`}>
-              <button
-                type="button"
-                onClick={() => handleThemeChange('noc')}
-                className={`h-7 px-2.5 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-all cursor-pointer ${
-                  faceplateTheme === 'noc'
-                    ? 'bg-slate-900 text-cyan-400 border border-cyan-500/50 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                }`}
-                title="NOC High-Contrast: тёмное экранированное шасси, высококонтрастные чипы VLAN и яркие LED-индикаторы"
-              >
-                <Shield className="w-3 h-3 text-cyan-400" />
-                <span>NOC</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleThemeChange('vendor')}
-                className={`h-7 px-2.5 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-all cursor-pointer ${
-                  faceplateTheme === 'vendor'
-                    ? 'bg-amber-600 text-white shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                }`}
-                title="Реализм & TIA-606-C: корпус вендора (MikroTik White / SNR Steel) с промышленной маркировочной планкой"
-              >
-                <Server className="w-3 h-3" />
-                <span>Реализм</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleThemeChange('neon')}
-                className={`h-7 px-2.5 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-all cursor-pointer ${
-                  faceplateTheme === 'neon'
-                    ? 'bg-purple-600 text-white shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                }`}
-                title="Cyber Blueprint: неоновые контуры портов, глубокий кибер-фон и максимальная читаемость"
-              >
-                <Sparkles className="w-3 h-3 text-purple-200" />
-                <span>Неон</span>
-              </button>
-            </div>
-
-            {/* Live Traffic Sparklines Toggle */}
-            <button
-              onClick={() => setShowSparklines(!showSparklines)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                showSparklines
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : (isLight
-                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300')
-              }`}
-              title="Показать мини-графики (Sparklines) загрузки трафика прямо над каждым портом фейсплейта"
-            >
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>{showSparklines ? 'Спарклайны: Вкл' : 'Спарклайны'}</span>
-            </button>
-
-            {/* Cable Tags Faceplate Toggle */}
-            <button
-              onClick={() => setShowCableTags(!showCableTags)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                showCableTags
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : (isLight
-                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300')
-              }`}
-              title="Показать кабельные бирки с номерами розеток и линков прямо на портах"
-            >
-              <Tag className="w-3.5 h-3.5" />
-              <span>{showCableTags ? 'Скрыть бирки' : 'Бирки кабелей'}</span>
-            </button>
-
-            {/* Batch Selection Toggle */}
-            <button
-              onClick={() => {
-                const nextMode = !selectionMode;
-                setSelectionMode(nextMode);
-                if (!nextMode) setSelectedPortIds([]);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                selectionMode
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : (isLight
-                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300')
-              }`}
-              title="Включить режим множественного выбора портов для пакетной настройки"
-            >
-              <CheckSquare className="w-3.5 h-3.5" />
-              <span>{selectionMode ? 'Выбор активен' : 'Мульти-выбор'}</span>
-            </button>
-
-            {selectionMode && (
-              <div className="flex items-center gap-1 flex-wrap">
-                <button
-                  onClick={handleSelectAll}
-                  className={`px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-                    isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-800' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                  }`}
+            {/* Controls: VLAN Highlight & Batch select */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Highlight VLAN feature */}
+              <div className={`h-9 px-3 rounded-xl border flex items-center gap-2 text-xs shrink-0 ${
+                isLight ? 'bg-slate-50 border-slate-300' : 'bg-slate-950 border-slate-800'
+              }`}>
+                <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span className="text-slate-500 dark:text-slate-400 shrink-0">Подсветить VLAN:</span>
+                <select
+                  value={highlightVlanId === null ? '' : highlightVlanId}
+                  onChange={(e) => setHighlightVlanId(e.target.value === '' ? null : Number(e.target.value))}
+                  className="bg-transparent text-slate-800 dark:text-white font-mono text-xs focus:outline-hidden cursor-pointer"
                 >
-                  Все ({ports.length})
-                </button>
-                {copperPorts.length >= 24 && (
-                  <>
-                    <button
-                      onClick={() => handleSelectRange(1, 12)}
-                      className={`px-2 py-1 rounded-md text-xs font-mono transition-colors cursor-pointer ${
-                        isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-800' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                      }`}
-                    >
-                      1–12
-                    </button>
-                    <button
-                      onClick={() => handleSelectRange(13, 24)}
-                      className={`px-2 py-1 rounded-md text-xs font-mono transition-colors cursor-pointer ${
-                        isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-800' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                      }`}
-                    >
-                      13–24
-                    </button>
-                  </>
-                )}
-                {copperPorts.length >= 48 && (
+                  <option value="" className={isLight ? 'bg-white text-slate-800' : 'bg-slate-900 text-slate-300'}>-- Все порты --</option>
+                  {vlans.map((v) => (
+                    <option key={v.id} value={v.id} className={isLight ? 'bg-white text-slate-800' : 'bg-slate-900 text-white'}>
+                      VLAN {v.id} ({v.name})
+                    </option>
+                  ))}
+                </select>
+                {highlightVlanId !== null && (
                   <button
-                    onClick={() => handleSelectRange(25, 48)}
-                    className={`px-2 py-1 rounded-md text-xs font-mono transition-colors cursor-pointer ${
-                      isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-800' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                    }`}
+                    onClick={() => setHighlightVlanId(null)}
+                    className="text-slate-400 hover:text-slate-700 dark:hover:text-white text-xs ml-0.5 cursor-pointer"
+                    title="Сбросить подсветку"
                   >
-                    25–48
+                    ✕
                   </button>
-                )}
-                {sfpPorts.length > 0 && (
-                  <button
-                    onClick={handleSelectSfp}
-                    className={`px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-                      isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-800' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                    }`}
-                  >
-                    SFP ({sfpPorts.length})
-                  </button>
-                )}
-                {switchData.poe && (
-                  <button
-                    onClick={handleSelectPoe}
-                    className={`px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer text-amber-400 ${
-                      isLight ? 'bg-amber-100 hover:bg-amber-200' : 'bg-amber-950/40 hover:bg-amber-900/60 border border-amber-800/40'
-                    }`}
-                  >
-                    PoE
-                  </button>
-                )}
-                <button
-                  onClick={handleClearSelection}
-                  className={`px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-                    isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-600' : 'bg-slate-800 hover:bg-slate-700 text-slate-400'
-                  }`}
-                >
-                  Снять
-                </button>
-
-                {selectedPortIds.length > 0 && (
-                  <>
-                    <button
-                      onClick={() => setIsProfileModalOpen(true)}
-                      className="flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-xs font-medium shadow-xs cursor-pointer ml-1"
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      <span>Профиль ({selectedPortIds.length})</span>
-                    </button>
-                    <button
-                      onClick={handleBatchEdit}
-                      className="flex items-center gap-1 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-md text-xs font-medium shadow-xs cursor-pointer"
-                    >
-                      <Sliders className="w-3 h-3" />
-                      <span>Детально</span>
-                    </button>
-                  </>
                 )}
               </div>
-            )}
+
+              {/* Batch Selection Toggle */}
+              <button
+                onClick={() => {
+                  const nextMode = !selectionMode;
+                  setSelectionMode(nextMode);
+                  if (!nextMode) setSelectedPortIds([]);
+                }}
+                className={`h-9 px-3 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+                  selectionMode
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-xs'
+                    : (isLight
+                        ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700')
+                }`}
+                title="Включить режим множественного выбора портов для пакетной настройки"
+              >
+                <CheckSquare className="w-3.5 h-3.5" />
+                <span>{selectionMode ? 'Выбор активен' : 'Мульти-выбор'}</span>
+              </button>
+
+              {selectionMode && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    onClick={handleSelectAll}
+                    className={`h-9 px-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                      isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                    }`}
+                  >
+                    Все ({ports.length})
+                  </button>
+                  {copperPorts.length >= 24 && (
+                    <>
+                      <button
+                        onClick={() => handleSelectRange(1, 12)}
+                        className={`h-9 px-2.5 rounded-xl border text-xs font-mono font-semibold transition-all cursor-pointer ${
+                          isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                        }`}
+                      >
+                        1–12
+                      </button>
+                      <button
+                        onClick={() => handleSelectRange(13, 24)}
+                        className={`h-9 px-2.5 rounded-xl border text-xs font-mono font-semibold transition-all cursor-pointer ${
+                          isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                        }`}
+                      >
+                        13–24
+                      </button>
+                    </>
+                  )}
+                  {copperPorts.length >= 48 && (
+                    <button
+                      onClick={() => handleSelectRange(25, 48)}
+                      className={`h-9 px-2.5 rounded-xl border text-xs font-mono font-semibold transition-all cursor-pointer ${
+                        isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      25–48
+                    </button>
+                  )}
+                  {sfpPorts.length > 0 && (
+                    <button
+                      onClick={handleSelectSfp}
+                      className={`h-9 px-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                        isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      SFP ({sfpPorts.length})
+                    </button>
+                  )}
+                  {switchData.poe && (
+                    <button
+                      onClick={handleSelectPoe}
+                      className={`h-9 px-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer text-amber-500 ${
+                        isLight ? 'bg-amber-50 hover:bg-amber-100 border-amber-300' : 'bg-amber-950/40 hover:bg-amber-900/60 border-amber-800/40'
+                      }`}
+                    >
+                      PoE
+                    </button>
+                  )}
+                  <button
+                    onClick={handleClearSelection}
+                    className={`h-9 px-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                      isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 border-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-400 border-slate-700'
+                    }`}
+                  >
+                    Снять
+                  </button>
+
+                  {selectedPortIds.length > 0 && (
+                    <>
+                      <button
+                        onClick={() => setIsProfileModalOpen(true)}
+                        className="h-9 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1 shadow-xs cursor-pointer ml-1"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Профиль ({selectedPortIds.length})</span>
+                      </button>
+                      <button
+                        onClick={handleBatchEdit}
+                        className="h-9 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1 shadow-xs cursor-pointer"
+                      >
+                        <Sliders className="w-3.5 h-3.5" />
+                        <span>Детально</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Row 2: Heatmap Modes, Chassis Theme, Font Family, Sparklines, Cable Tags */}
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800/60 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2.5 flex-wrap">
+
+              {/* Heatmap Overlay Selector */}
+              <div className={`h-9 p-0.5 rounded-xl border flex items-center shrink-0 ${
+                isLight ? 'bg-slate-100 border-slate-300' : 'bg-slate-950 border-slate-800'
+              }`}>
+                <button
+                  type="button"
+                  onClick={() => setHeatmapMode('none')}
+                  className={`h-7.5 px-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    heatmapMode === 'none'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Стандартный режим (подсветка VLAN)"
+                >
+                  VLAN
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHeatmapMode('traffic');
+                    if (!telemetry) handlePollTelemetry();
+                  }}
+                  className={`h-7.5 px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                    heatmapMode === 'traffic'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Тепловая карта трафика портов (пульсация светодиодов: зеленый <10M, желтый 10-100M, оранжевый/красный >500M)"
+                >
+                  <Flame className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Трафик (Pulse)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHeatmapMode('poe');
+                    if (!telemetry) handlePollTelemetry();
+                  }}
+                  className={`h-7.5 px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                    heatmapMode === 'poe'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Тепловая карта PoE (нагрузка в Ваттах)"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>PoE</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHeatmapMode('speed')}
+                  className={`h-7.5 px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                    heatmapMode === 'speed'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Тепловая карта скорости портов (10G/1G/Down)"
+                >
+                  <Activity className="w-3.5 h-3.5" />
+                  <span>Скорость</span>
+                </button>
+              </div>
+
+              {/* Visual Theme Selector (NOC High-Contrast / Vendor Photorealism / Cyber Blueprint) */}
+              <div className={`h-9 p-0.5 rounded-xl border flex items-center shrink-0 ${
+                isLight ? 'bg-slate-100 border-slate-300' : 'bg-slate-950 border-slate-800'
+              }`}>
+                <button
+                  type="button"
+                  onClick={() => handleThemeChange('noc')}
+                  className={`h-7.5 px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                    faceplateTheme === 'noc'
+                      ? 'bg-slate-900 text-cyan-400 border border-cyan-500/50 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="NOC High-Contrast: тёмное экранированное шасси, высококонтрастные чипы VLAN и яркие LED-индикаторы"
+                >
+                  <Shield className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>NOC</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleThemeChange('vendor')}
+                  className={`h-7.5 px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                    faceplateTheme === 'vendor'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Реализм & TIA-606-C: корпус вендора (MikroTik White / SNR Steel) с промышленной маркировочной планкой"
+                >
+                  <Server className="w-3.5 h-3.5" />
+                  <span>Реализм</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleThemeChange('neon')}
+                  className={`h-7.5 px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                    faceplateTheme === 'neon'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Cyber Blueprint: неоновые контуры портов, глубокий кибер-фон и максимальная читаемость"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-200" />
+                  <span>Неон</span>
+                </button>
+              </div>
+
+              {/* Typography / Font Selector */}
+              <div className={`h-9 p-0.5 rounded-xl border flex items-center shrink-0 ${
+                isLight ? 'bg-slate-100 border-slate-300' : 'bg-slate-950 border-slate-800'
+              }`}>
+                <div className="flex items-center pl-2 pr-1 text-slate-400" title="Шрифт фейсплейта">
+                  <Type className="w-3.5 h-3.5" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleFontChange('mono')}
+                  className={`h-7.5 px-2.5 rounded-lg text-xs font-mono font-semibold transition-all cursor-pointer ${
+                    faceplateFont === 'mono'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Инженерный моноширинный шрифт (Monospace CLI)"
+                >
+                  Моно
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleFontChange('sans')}
+                  className={`h-7.5 px-2.5 rounded-lg text-xs font-sans font-semibold transition-all cursor-pointer ${
+                    faceplateFont === 'sans'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Современный чистый гротеск (Clean Sans-Serif)"
+                >
+                  Sans
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleFontChange('tech')}
+                  className={`h-7.5 px-2.5 rounded-lg text-xs font-mono uppercase tracking-wider font-extrabold transition-all cursor-pointer ${
+                    faceplateFont === 'tech'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Промышленный терминальный шрифт (Industrial DIN / Terminal)"
+                >
+                  Терминал
+                </button>
+              </div>
+
+              {/* Live Traffic Sparklines Toggle */}
+              <button
+                onClick={() => setShowSparklines(!showSparklines)}
+                className={`h-9 px-3 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+                  showSparklines
+                    ? 'bg-emerald-600 text-white border-emerald-500 shadow-xs'
+                    : (isLight
+                        ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700')
+                }`}
+                title="Показать мини-графики (Sparklines) загрузки трафика прямо над каждым портом фейсплейта"
+              >
+                <TrendingUp className="w-3.5 h-3.5" />
+                <span>{showSparklines ? 'Спарклайны: Вкл' : 'Спарклайны'}</span>
+              </button>
+
+              {/* Cable Tags Faceplate Toggle */}
+              <button
+                onClick={() => setShowCableTags(!showCableTags)}
+                className={`h-9 px-3 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+                  showCableTags
+                    ? 'bg-amber-600 text-white border-amber-500 shadow-xs'
+                    : (isLight
+                        ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700')
+                }`}
+                title="Показать кабельные бирки с номерами розеток и линков прямо на портах"
+              >
+                <Tag className="w-3.5 h-3.5" />
+                <span>{showCableTags ? 'Скрыть бирки' : 'Бирки кабелей'}</span>
+              </button>
+
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Tabs Switcher: Faceplate vs Port Table */}
-      <div className="flex items-center gap-2">
+      {/* Tabs Switcher: Faceplate vs Port Table (Enlarged prominent tabs) */}
+      <div className="flex items-center gap-3">
         <button
           onClick={() => setActiveTab('faceplate')}
-          className={`h-9 px-4 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-all cursor-pointer ${
+          className={`h-11 px-5 rounded-xl text-sm font-bold whitespace-nowrap flex items-center gap-2.5 transition-all cursor-pointer ${
             activeTab === 'faceplate'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : (isLight ? 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-850')
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 ring-2 ring-blue-500/30'
+              : (isLight
+                  ? 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-xs'
+                  : 'bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800/80 hover:text-white shadow-xs')
           }`}
         >
-          <LayoutGrid className="w-3.5 h-3.5" />
+          <LayoutGrid className="w-4 h-4" />
           <span>Лицевая панель (Faceplate)</span>
         </button>
         <button
           onClick={() => setActiveTab('table')}
-          className={`h-9 px-4 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-all cursor-pointer ${
+          className={`h-11 px-5 rounded-xl text-sm font-bold whitespace-nowrap flex items-center gap-2.5 transition-all cursor-pointer ${
             activeTab === 'table'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : (isLight ? 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-850')
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 ring-2 ring-blue-500/30'
+              : (isLight
+                  ? 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-xs'
+                  : 'bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800/80 hover:text-white shadow-xs')
           }`}
         >
-          <TableIcon className="w-3.5 h-3.5" />
+          <TableIcon className="w-4 h-4" />
           <span>Кабельный журнал (Таблица портов)</span>
+          <span className={`ml-1 px-2 py-0.5 rounded-lg text-xs font-mono font-bold ${
+            activeTab === 'table'
+              ? 'bg-blue-500/40 text-white'
+              : (isLight ? 'bg-slate-100 text-slate-600' : 'bg-slate-800 text-slate-400')
+          }`}>
+            {ports.length} портов
+          </span>
         </button>
       </div>
 
@@ -1133,7 +1245,7 @@ export function SwitchFaceplate({
               <div className={`w-44 pr-4 border-r shrink-0 flex flex-col justify-between h-32 ${chassisThemeStyles.leftPanelBorder}`}>
                 <div>
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className={`text-[13px] font-black uppercase tracking-wider font-mono ${chassisThemeStyles.leftPanelText}`}>
+                    <span className={`uppercase tracking-wider ${fontStyles.vendor} ${chassisThemeStyles.leftPanelText}`}>
                       {switchData.vendor}
                     </span>
                     {switchData.badge && (
@@ -1145,7 +1257,7 @@ export function SwitchFaceplate({
                       </span>
                     )}
                   </div>
-                  <div className={`text-[11px] font-semibold font-mono truncate ${chassisThemeStyles.modelText}`}>
+                  <div className={`truncate ${fontStyles.model} ${chassisThemeStyles.modelText}`}>
                     {switchData.model}
                   </div>
                 </div>
@@ -1154,24 +1266,24 @@ export function SwitchFaceplate({
                 <div className={`grid grid-cols-2 gap-x-2 gap-y-1.5 p-2 rounded-md border ${chassisThemeStyles.ledBox}`}>
                   <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
-                    <span className={`text-[9px] font-mono font-bold ${chassisThemeStyles.ledLabel}`}>PWR</span>
+                    <span className={`font-bold ${fontStyles.leds} ${chassisThemeStyles.ledLabel}`}>PWR</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
-                    <span className={`text-[9px] font-mono font-bold ${chassisThemeStyles.ledLabel}`}>SYS</span>
+                    <span className={`font-bold ${fontStyles.leds} ${chassisThemeStyles.ledLabel}`}>SYS</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />
-                    <span className={`text-[9px] font-mono font-bold ${chassisThemeStyles.ledLabel}`}>SPEED</span>
+                    <span className={`font-bold ${fontStyles.leds} ${chassisThemeStyles.ledLabel}`}>SPEED</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className={`w-2 h-2 rounded-full ${stats.poe > 0 ? 'bg-amber-400 shadow-[0_0_8px_#f59e0b]' : (isLight ? 'bg-slate-300' : 'bg-slate-700')}`} />
-                    <span className={`text-[9px] font-mono font-bold ${chassisThemeStyles.ledLabel}`}>PoE</span>
+                    <span className={`font-bold ${fontStyles.leds} ${chassisThemeStyles.ledLabel}`}>PoE</span>
                   </div>
                 </div>
 
                 {/* Management IP on faceplate */}
-                <div className="text-[10px] font-mono text-slate-500 truncate">
+                <div className={`text-slate-500 truncate ${fontStyles.ip}`}>
                   IP: {switchData.ip || 'DHCP'}
                 </div>
               </div>
@@ -1216,6 +1328,7 @@ export function SwitchFaceplate({
                               onJumpToPeer={onJumpToPeer}
                               theme={theme}
                               faceplateTheme={faceplateTheme}
+                              faceplateFont={faceplateFont}
                             />
                           );
                         })}
@@ -1249,7 +1362,8 @@ export function SwitchFaceplate({
                                 onJumpToPeer={onJumpToPeer}
                                 theme={theme}
                                 faceplateTheme={faceplateTheme}
-                              />
+                              faceplateFont={faceplateFont}
+                            />
                             );
                           })}
                         </div>
@@ -1262,7 +1376,7 @@ export function SwitchFaceplate({
               {/* Right Section: SFP / SFP+ Uplinks */}
               {sfpPorts.length > 0 && (
                 <div className={`pl-4 border-l shrink-0 ${chassisThemeStyles.sfpBorder}`}>
-                  <div className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest text-center mb-1">
+                  <div className={`uppercase tracking-widest text-center mb-1 text-slate-500 ${fontStyles.sfpHeader}`}>
                     SFP / Uplinks
                   </div>
                   <div className={`p-2 border rounded-lg flex flex-col gap-2 ${chassisThemeStyles.sfpBay}`}>
@@ -1293,7 +1407,8 @@ export function SwitchFaceplate({
                             onJumpToPeer={onJumpToPeer}
                             theme={theme}
                             faceplateTheme={faceplateTheme}
-                          />
+                              faceplateFont={faceplateFont}
+                            />
                         );
                       })}
                     </div>
@@ -1326,6 +1441,7 @@ export function SwitchFaceplate({
                               onJumpToPeer={onJumpToPeer}
                               theme={theme}
                               faceplateTheme={faceplateTheme}
+                              faceplateFont={faceplateFont}
                             />
                           );
                         })}

@@ -22,9 +22,28 @@ export function PortItem({
   trafficHistory = [],
   onOpenChart = null,
   theme = 'dark',
-  faceplateTheme = 'noc'
+  faceplateTheme = 'noc',
+  faceplateFont = 'mono'
 }) {
   const isLight = theme === 'light';
+  const portNumberFont = faceplateFont === 'sans'
+    ? 'font-sans font-bold text-[11px] tracking-tight'
+    : faceplateFont === 'tech'
+    ? 'font-mono font-black text-[10px] tracking-wider uppercase'
+    : 'font-mono font-bold text-[10px]';
+
+  const badgeFont = faceplateFont === 'sans'
+    ? 'font-sans font-bold tracking-tight text-[9px]'
+    : faceplateFont === 'tech'
+    ? 'font-mono font-black uppercase tracking-wider text-[8px]'
+    : 'font-mono font-bold text-[9px]';
+
+  const tagFont = faceplateFont === 'sans'
+    ? 'font-sans font-semibold text-[8px] tracking-tight'
+    : faceplateFont === 'tech'
+    ? 'font-mono font-black uppercase tracking-wider text-[7px]'
+    : 'font-mono font-bold text-[8px]';
+
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipPos, setTooltipPos] = useState(null);
   const portButtonRef = useRef(null);
@@ -282,7 +301,7 @@ export function PortItem({
         }}
       >
         {/* Top: Port Number & Dual Real-World LEDs (Link/Speed + PoE/Activity) */}
-        <div className="w-full flex items-center justify-between text-[10px] font-mono leading-none">
+        <div className={`w-full flex items-center justify-between leading-none ${portNumberFont}`}>
           <span className={`font-bold ${
             faceplateTheme === 'noc'
               ? (isSelected ? 'text-cyan-400 font-extrabold' : 'text-slate-100 font-extrabold')
@@ -381,7 +400,7 @@ export function PortItem({
             {/* SFP Disabled (Shutdown) Overlay */}
             {isDisabled && (
               <div className="absolute inset-0 flex items-center justify-center bg-slate-950/70 rounded-xs z-10">
-                <span className="text-[8px] font-mono font-black text-rose-500 uppercase tracking-tight">
+                <span className={`text-[8px] font-black text-rose-500 uppercase tracking-tight ${faceplateFont === "sans" ? "font-sans" : "font-mono"}`}>
                   OFF
                 </span>
               </div>
@@ -464,7 +483,7 @@ export function PortItem({
             {/* RJ-45 Disabled (Shutdown) Overlay */}
             {isDisabled && (
               <div className="absolute inset-0 flex items-center justify-center bg-slate-950/70 rounded-xs z-10">
-                <span className="text-[8px] font-mono font-black text-rose-500 uppercase tracking-tight">
+                <span className={`text-[8px] font-black text-rose-500 uppercase tracking-tight ${faceplateFont === "sans" ? "font-sans" : "font-mono"}`}>
                   OFF
                 </span>
               </div>
@@ -476,17 +495,17 @@ export function PortItem({
         <div className="w-full flex items-center justify-center gap-0.5 leading-none mt-0.5">
           {port.lagId && (
             <span
-              className="text-[8px] font-mono font-bold px-0.5 py-0.2 rounded-xs bg-indigo-500/20 text-indigo-500 border border-indigo-500/30"
+              className={`text-[8px] font-bold px-0.5 py-0.2 rounded-xs bg-indigo-500/20 text-indigo-500 border border-indigo-500/30 ${badgeFont}`}
               title={`Входит в группу агрегации LAG ${port.lagId}`}
             >
               L{port.lagId}
             </span>
           )}
           {isDisabled ? (
-            <span className="text-[9px] font-mono text-slate-400">OFF</span>
+            <span className={`text-slate-400 ${badgeFont}`}>OFF</span>
           ) : heatmapMode === 'traffic' ? (
             <span
-              className="inline-block text-[8px] font-mono font-bold px-1 py-0.5 rounded-xs border transition-all"
+              className={`inline-block px-1 py-0.5 rounded-xs border transition-all ${badgeFont}`}
               style={{
                 backgroundColor: `${accentColor}25`,
                 borderColor: `${accentColor}66`,
@@ -497,12 +516,12 @@ export function PortItem({
               {formattedTraffic}
             </span>
           ) : isDisabled ? (
-            <span className="inline-block text-[8px] font-mono font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-1 py-0.5 rounded-xs border border-rose-500/30">
+            <span className={`inline-block text-rose-600 dark:text-rose-400 bg-rose-500/10 px-1 py-0.5 rounded-xs border border-rose-500/30 ${badgeFont}`}>
               OFF
             </span>
           ) : heatmapMode === 'poe' ? (
             <span
-              className="inline-block text-[8px] font-mono font-bold px-1 py-0.5 rounded-xs border"
+              className={`inline-block px-1 py-0.5 rounded-xs border ${badgeFont}`}
               style={{
                 backgroundColor: `${accentColor}25`,
                 borderColor: `${accentColor}55`,
@@ -525,7 +544,7 @@ export function PortItem({
           ) : faceplateTheme === 'noc' ? (
             /* NOC High-Contrast Chip: Solid vibrant background with bold white text (Zero blending!) */
             <span
-              className="inline-block text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-xs shadow-xs text-white tracking-tight"
+              className={`inline-block px-1.5 py-0.5 rounded-xs shadow-xs text-white tracking-tight ${badgeFont}`}
               style={{
                 backgroundColor: isTrunk ? '#8b5cf6' : accentColor,
                 border: '1px solid rgba(255,255,255,0.25)',
@@ -537,7 +556,7 @@ export function PortItem({
           ) : faceplateTheme === 'vendor' ? (
             /* Vendor Photorealism: TIA-606-C Label Strip */
             <span
-              className={`inline-block text-[8px] font-mono font-extrabold px-1.5 py-0.5 rounded-2xs border shadow-xs ${
+              className={`inline-block px-1.5 py-0.5 rounded-2xs border shadow-xs ${badgeFont} ${
                 isLight ? 'bg-white text-slate-900 border-slate-300' : 'bg-slate-900 text-slate-100 border-slate-600'
               }`}
               style={{
@@ -550,7 +569,7 @@ export function PortItem({
           ) : faceplateTheme === 'neon' ? (
             /* Cyberpunk Blueprint: Glowing Neon Chip */
             <span
-              className="inline-block text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-xs border shadow-xs"
+              className={`inline-block px-1.5 py-0.5 rounded-xs border shadow-xs ${badgeFont}`}
               style={{
                 backgroundColor: `${accentColor}25`,
                 borderColor: accentColor,
@@ -561,7 +580,7 @@ export function PortItem({
               {isTrunk ? '⚡TRK' : `V${port.pvid}`}
             </span>
           ) : isTrunk ? (
-            <span className="inline-block text-[9px] font-mono font-bold text-purple-600 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/80 px-1 py-0.5 rounded-xs border border-purple-300 dark:border-purple-500/40">
+            <span className={`inline-block text-purple-600 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/80 px-1 py-0.5 rounded-xs border border-purple-300 dark:border-purple-500/40 ${badgeFont}`}>
               TRK
             </span>
           ) : (
@@ -583,7 +602,7 @@ export function PortItem({
       {showCableTags && (
         <div className="mt-1 w-full text-center">
           <div
-            className={`text-[8px] font-mono truncate px-1 py-0.5 rounded-xs border shadow-xs max-w-11 ${
+            className={`truncate px-1 py-0.5 rounded-xs border shadow-xs max-w-11 ${tagFont} ${
               port.connectedTo
                 ? (isLight ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-blue-950/80 text-blue-300 border-blue-800')
                 : (isLight ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-slate-900 text-slate-500 border-slate-800')

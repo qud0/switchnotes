@@ -377,20 +377,20 @@ export default function DashboardView({
                     <button
                       onClick={() => handlePingSingle(sw.ip, sw.id)}
                       disabled={isPingLoading}
-                      className="h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                      className="h-9 px-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
                       title="Проверить отклик ICMP Ping"
                     >
-                      <RefreshCw className={`w-3 h-3 ${isPingLoading ? 'animate-spin' : ''}`} />
+                      <RefreshCw className={`w-3.5 h-3.5 ${isPingLoading ? 'animate-spin' : ''}`} />
                       <span>Пинг</span>
                     </button>
 
                     {onOpenMacDiscovery && (
                       <button
                         onClick={() => onOpenMacDiscovery(sw)}
-                        className="h-8 px-2.5 rounded-lg border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                        className="h-9 px-3.5 rounded-xl border border-purple-500/30 bg-purple-50 hover:bg-purple-100 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
                         title="Live-опрос таблицы MAC-адресов"
                       >
-                        <Radio className="w-3 h-3" />
+                        <Radio className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                         <span>Live MAC</span>
                       </button>
                     )}
@@ -398,10 +398,10 @@ export default function DashboardView({
                     {onSelectSwitch && (
                       <button
                         onClick={() => onSelectSwitch(sw.id)}
-                        className="h-8 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                        className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs shadow-blue-500/20 cursor-pointer"
                       >
                         <span>Лицевая панель</span>
-                        <ArrowRight className="w-3 h-3" />
+                        <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
