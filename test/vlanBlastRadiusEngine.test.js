@@ -92,3 +92,101 @@ test('verifyManagementReachability approves changes that do not affect managemen
   assert.equal(res.isolatedSwitchIds.length, 0);
   assert.equal(res.violations.length, 0);
 });
+
+test('detectTransitPartitions detects downstream access ports isolated when VLAN pruned from trunk', () => {
+  const engine = new VlanBlastRadiusEngine();
+  const coreSw = {
+    id: 'sw-core',
+    name: 'CORE-01',
+    role: 'core',
+    ip: '192.168.10.1',
+    ports: [
+      { id: 'p-core-1', number: 1, mode: 'trunk', taggedVlans: [10, 20], linkedSwitchId: 'sw-dist', linkedPortId: 'p-dist-1' }
+    ]
+  };
+
+  const distSw = {
+    id: 'sw-dist',
+    name: 'DIST-01',
+    role: 'distribution',
+    ip: '192.168.10.2',
+    ports: [
+      { id: 'p-dist-1', number: 1, mode: 'trunk', taggedVlans: [10, 20], linkedSwitchId: 'sw-core', linkedPortId: 'p-core-1' },
+      { id: 'p-dist-2', number: 2, mode: 'trunk', taggedVlans: [10, 20], linkedSwitchId: 'sw-edge', linkedPortId: 'p-edge-1' }
+    ]
+  };
+
+  const edgeSw = {
+    id: 'sw-edge',
+    name: 'EDGE-01',
+    role: 'access',
+    ip: '192.168.10.3',
+    ports: [
+      { id: 'p-edge-1', number: 1, mode: 'trunk', taggedVlans: [10, 20], linkedSwitchId: 'sw-dist', linkedPortId: 'p-dist-2' },
+      { id: 'p-edge-2', number: 2, mode: 'access', vlan: 20 },
+      { id: 'p-edge-3', number: 3, mode: 'access', vlan: 20 }
+    ]
+  };
+
+  const switches = [coreSw, distSw, edgeSw];
+  engine.storage = {
+    getSwitches: () => switches,
+    getVlans: () => [
+      { id: 10, subnet: '192.168.10.0/24', gateway: '192.168.10.1' },
+      { id: 20, subnet: '10.20.0.0/24', gateway: '10.20.0.1' }
+    ]
+  };
+
+  // Hypothethical change: Prune VLAN 20 on trunk p-dist-2 -> sw-edge
+  const cloned = JSON.parse(JSON.stringify(switches));
+  cloned[1].ports[1].taggedVlans = [10]; // 20 removed
+
+  const partitions = engine.detectTransitPartitions(cloned, [20]);
+  assert.equal(partitions.length, 1);
+  assert.equal(partitions[0].switchId, 'sw-edge');
+  assert.equal(partitions[0].disconnectedPorts.length, 2);
+});
+
+test('calculateBlastRadiusAssets accurately enumerates isolated servers and IPAM records', () => {
+  const engine = new VlanBlastRadiusEngine();
+  const servers = [
+    { id: 'srv-1', name: 'DB-PROD', ip: '10.20.0.15', switchId: 'sw-edge', port: 2, vlan: 20 },
+    { id: 'srv-2', name: 'WEB-PROD', ip: '10.10.0.5', switchId: 'sw-core', port: 5, vlan: 10 }
+  ];
+
+  const ipamRecords = [
+    { id: 'ip-1', ip: '10.20.0.101', hostname: 'user-pc-1', switchId: 'sw-edge', switchPort: 3, vlan: 20 },
+    { id: 'ip-2', ip: '10.20.0.102', hostname: 'user-pc-2', switchId: 'sw-dist', switchPort: 5, vlan: 20 }
+  ];
+
+  const vlans = [
+    { id: 10, name: 'Management', subnet: '192.168.10.0/24' },
+    { id: 20, name: 'Users LAN', subnet: '10.20.0.0/24' }
+  ];
+
+  engine.storage = {
+    getServers: () => servers,
+    getIpamRecords: () => ipamRecords,
+    getVlans: () => vlans,
+    getPatchPanels: () => []
+  };
+
+  const assets = engine.calculateBlastRadiusAssets({
+    clonedSwitches: [],
+    isolatedSwitchIds: [],
+    disconnectedPortItems: [
+      { switchId: 'sw-edge', portId: 'p-edge-2', number: 2, vlan: 20 },
+      { switchId: 'sw-edge', portId: 'p-edge-3', number: 3, vlan: 20 }
+    ],
+    affectedVlanIds: [20]
+  });
+
+  assert.equal(assets.affectedServers.length, 1);
+  assert.equal(assets.affectedServers[0].name, 'DB-PROD');
+  assert.equal(assets.affectedIpamHosts.length, 1);
+  assert.equal(assets.affectedIpamHosts[0].hostname, 'user-pc-1');
+  assert.equal(assets.affectedSubnets.length, 1);
+  assert.equal(assets.affectedSubnets[0].name, 'Users LAN');
+  assert.equal(assets.affectedPortsCount, 2);
+});
+
