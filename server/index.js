@@ -31,6 +31,13 @@ import { eventPulseDaemon } from './eventPulseDaemon.js';
 import { configDriftService } from './configDriftService.js';
 import { vlanBlastRadiusEngine } from './vlanBlastRadiusEngine.js';
 import { scanTopology, applyStitchedTopology } from './topologyStitcherService.js';
+import {
+  getFirmwareCatalog,
+  runPreflightAudit,
+  startRollout,
+  getRolloutStatus,
+  abortRollout
+} from './firmwareRolloutService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1916,12 +1923,81 @@ app.post('/api/topology/stitch/apply', requireRole('engineer'), (req, res) => {
       entity: 'topology_stitcher',
       action: 'apply',
       title: 'Применена топология LLDP/CDP Auto-Stitcher',
-      details: Применено новых линков: , удалено устаревших: \,
+      details: `Применено новых линков: ${result.appliedCount}, удалено устаревших: ${result.prunedCount}`,
       author: req.user?.username || 'admin'
     });
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// ==================== FIRMWARE CANARY ROLLOUT API ====================
+
+// 1. Get firmware catalog
+app.get('/api/firmware/catalog', (req, res) => {
+  try {
+    const catalog = getFirmwareCatalog();
+    res.json({ catalog });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Pre-flight guardrail audit
+app.post('/api/firmware/preflight', requireRole('engineer'), async (req, res) => {
+  try {
+    const { switchIds, canaryIds, firmwareId, isSimulation } = req.body || {};
+    const report = await runPreflightAudit({
+      storage,
+      switchIds,
+      canaryIds,
+      firmwareId,
+      isSimulation
+    });
+    res.json(report);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Start multi-stage canary rollout
+app.post('/api/firmware/rollout/start', requireRole('engineer'), async (req, res) => {
+  try {
+    const { switchIds, canaryIds, firmwareId, batchSize, autoRollback, isSimulation } = req.body || {};
+    const result = await startRollout({
+      storage,
+      switchIds,
+      canaryIds,
+      firmwareId,
+      batchSize,
+      autoRollback,
+      isSimulation
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// 4. Get active rollout status
+app.get('/api/firmware/rollout/status/:id', (req, res) => {
+  try {
+    const status = getRolloutStatus(req.params.id);
+    if (!status) return res.status(404).json({ error: 'Процесс обновления не найден' });
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. Emergency abort rollout
+app.post('/api/firmware/rollout/abort/:id', requireRole('engineer'), (req, res) => {
+  try {
+    const result = abortRollout(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
