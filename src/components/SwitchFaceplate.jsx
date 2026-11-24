@@ -8,6 +8,7 @@ import { SfpDdmModal } from './SfpDdmModal';
 import { checkVlanMismatch } from '../utils/vlanMismatch';
 import {
   Server,
+  Shield,
   Zap,
   CheckSquare,
   Edit,
@@ -65,6 +66,110 @@ export function SwitchFaceplate({
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [showCableTags, setShowCableTags] = useState(false);
   const [heatmapMode, setHeatmapMode] = useState('none'); // 'none' | 'poe' | 'speed'
+
+  // Visual Theme: 'noc' (Enterprise High-Contrast NOC) | 'vendor' (Photorealism & TIA-606-C) | 'neon' (Cyberpunk Blueprint)
+  const [faceplateTheme, setFaceplateTheme] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('switchbook_faceplate_theme') || 'noc';
+    }
+    return 'noc';
+  });
+
+  const handleThemeChange = (newTheme) => {
+    setFaceplateTheme(newTheme);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('switchbook_faceplate_theme', newTheme);
+    }
+  };
+
+  const isMikrotikVendor = String(switchData?.vendor || '').toLowerCase().includes('mikrotik');
+
+  const chassisThemeStyles = useMemo(() => {
+    switch (faceplateTheme) {
+      case 'noc':
+        return {
+          chassis: 'bg-gradient-to-b from-[#090d16] via-[#0f172a] to-[#090d16] border-slate-700/80 shadow-2xl shadow-slate-950/80 text-slate-100',
+          ears: 'bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-slate-700 text-slate-400',
+          rightEar: 'bg-gradient-to-l from-slate-900 via-slate-800 to-slate-900 border-slate-700 text-slate-400',
+          screws: 'border-slate-500 bg-slate-800',
+          screwDot: 'bg-slate-400',
+          leftPanelBorder: 'border-slate-800',
+          leftPanelText: 'text-slate-100',
+          modelText: 'text-slate-400',
+          ledBox: 'bg-[#050811]/90 border-slate-800/90',
+          ledLabel: 'text-slate-300',
+          groupBay: 'bg-[#050811]/95 border border-slate-800 shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)] rounded-xl',
+          sfpBay: 'bg-[#050811]/95 border border-slate-800 shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)] rounded-xl',
+          sfpBorder: 'border-slate-800'
+        };
+      case 'vendor':
+        if (isMikrotikVendor) {
+          return {
+            chassis: 'bg-gradient-to-b from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0] border-slate-300 shadow-xl text-slate-900',
+            ears: 'bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 border-slate-300 text-slate-600',
+            rightEar: 'bg-gradient-to-l from-slate-200 via-slate-100 to-slate-200 border-slate-300 text-slate-600',
+            screws: 'border-slate-400 bg-slate-200',
+            screwDot: 'bg-slate-500',
+            leftPanelBorder: 'border-slate-300',
+            leftPanelText: 'text-slate-900',
+            modelText: 'text-slate-600',
+            ledBox: 'bg-white/95 border-slate-300',
+            ledLabel: 'text-slate-700',
+            groupBay: 'bg-white border-2 border-slate-300 shadow-sm rounded-lg',
+            sfpBay: 'bg-white border-2 border-slate-300 shadow-sm rounded-lg',
+            sfpBorder: 'border-slate-300'
+          };
+        } else {
+          return {
+            chassis: 'bg-gradient-to-b from-[#2d3748] via-[#1a202c] to-[#171923] border-slate-600 shadow-xl text-slate-100',
+            ears: 'bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 border-slate-600 text-slate-300',
+            rightEar: 'bg-gradient-to-l from-slate-800 via-slate-700 to-slate-800 border-slate-600 text-slate-300',
+            screws: 'border-slate-500 bg-slate-700',
+            screwDot: 'bg-slate-400',
+            leftPanelBorder: 'border-slate-700',
+            leftPanelText: 'text-slate-100',
+            modelText: 'text-slate-300',
+            ledBox: 'bg-slate-900/90 border-slate-700',
+            ledLabel: 'text-slate-300',
+            groupBay: 'bg-slate-950/80 border border-slate-700 shadow-inner rounded-lg',
+            sfpBay: 'bg-slate-950/80 border border-slate-700 shadow-inner rounded-lg',
+            sfpBorder: 'border-slate-700'
+          };
+        }
+      case 'neon':
+        return {
+          chassis: 'bg-[#030712] border-cyan-500/50 shadow-[0_0_30px_rgba(6,182,212,0.2)] text-slate-100',
+          ears: 'bg-[#070e1c] border-cyan-500/40 text-cyan-400',
+          rightEar: 'bg-[#070e1c] border-cyan-500/40 text-cyan-400',
+          screws: 'border-cyan-500/60 bg-[#09152b]',
+          screwDot: 'bg-cyan-400',
+          leftPanelBorder: 'border-cyan-500/30',
+          leftPanelText: 'text-cyan-300',
+          modelText: 'text-cyan-400/80',
+          ledBox: 'bg-[#070f20]/90 border-cyan-500/30',
+          ledLabel: 'text-cyan-200',
+          groupBay: 'bg-[#070f20]/90 border border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.12)] rounded-xl',
+          sfpBay: 'bg-[#070f20]/90 border border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.12)] rounded-xl',
+          sfpBorder: 'border-cyan-500/30'
+        };
+      default:
+        return {
+          chassis: isLight ? 'bg-gradient-to-b from-slate-200 via-slate-100 to-slate-200 border-slate-400' : 'bg-gradient-to-b from-slate-900 via-slate-925 to-slate-950 border-slate-700/80',
+          ears: isLight ? 'bg-gradient-to-r from-slate-300 to-slate-200 border-slate-400' : 'bg-gradient-to-r from-slate-800 to-slate-900 border-slate-700/70',
+          rightEar: isLight ? 'bg-gradient-to-l from-slate-300 to-slate-200 border-slate-400' : 'bg-gradient-to-l from-slate-800 to-slate-900 border-slate-700/70',
+          screws: isLight ? 'border-slate-400 bg-slate-100' : 'border-slate-600 bg-slate-950',
+          screwDot: isLight ? 'bg-slate-400' : 'bg-slate-700',
+          leftPanelBorder: isLight ? 'border-slate-300' : 'border-slate-800',
+          leftPanelText: isLight ? 'text-slate-800' : 'text-slate-200',
+          modelText: isLight ? 'text-slate-600' : 'text-slate-400',
+          ledBox: isLight ? 'bg-white/80 border-slate-300' : 'bg-slate-950/80 border-slate-800/80',
+          ledLabel: isLight ? 'text-slate-600' : 'text-slate-400',
+          groupBay: isLight ? 'bg-white/80 border-slate-300' : 'bg-slate-950/70 border-slate-800',
+          sfpBay: isLight ? 'bg-white/80 border-slate-300' : 'bg-slate-950/70 border-slate-800',
+          sfpBorder: isLight ? 'border-slate-300' : 'border-slate-800'
+        };
+    }
+  }, [faceplateTheme, isMikrotikVendor, isLight]);
 
   // Live SNMP Telemetry & Monitoring state
   const [telemetry, setTelemetry] = useState(null);
@@ -769,6 +874,51 @@ export function SwitchFaceplate({
               </button>
             </div>
 
+            {/* Visual Theme Selector (NOC High-Contrast / Vendor Photorealism / Cyber Blueprint) */}
+            <div className={`h-8 p-0.5 rounded-lg border flex items-center shrink-0 ${
+              isLight ? 'bg-slate-100 border-slate-300' : 'bg-slate-950 border-slate-800'
+            }`}>
+              <button
+                type="button"
+                onClick={() => handleThemeChange('noc')}
+                className={`h-7 px-2.5 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                  faceplateTheme === 'noc'
+                    ? 'bg-slate-900 text-cyan-400 border border-cyan-500/50 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="NOC High-Contrast: тёмное экранированное шасси, высококонтрастные чипы VLAN и яркие LED-индикаторы"
+              >
+                <Shield className="w-3 h-3 text-cyan-400" />
+                <span>NOC</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleThemeChange('vendor')}
+                className={`h-7 px-2.5 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                  faceplateTheme === 'vendor'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="Реализм & TIA-606-C: корпус вендора (MikroTik White / SNR Steel) с промышленной маркировочной планкой"
+              >
+                <Server className="w-3 h-3" />
+                <span>Реализм</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleThemeChange('neon')}
+                className={`h-7 px-2.5 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                  faceplateTheme === 'neon'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="Cyber Blueprint: неоновые контуры портов, глубокий кибер-фон и максимальная читаемость"
+              >
+                <Sparkles className="w-3 h-3 text-purple-200" />
+                <span>Неон</span>
+              </button>
+            </div>
+
             {/* Live Traffic Sparklines Toggle */}
             <button
               onClick={() => setShowSparklines(!showSparklines)}
@@ -969,134 +1119,157 @@ export function SwitchFaceplate({
 
           {/* Switch Physical 19" Rackmount Front Panel Chassis */}
           <div className="relative overflow-x-auto pb-4">
-            <div className={`min-w-[960px] border-2 rounded-xl shadow-2xl p-4 flex items-center relative select-none transition-colors ${
-              isLight
-                ? 'bg-linear-to-b from-slate-200 via-slate-100 to-slate-200 border-slate-400'
-                : 'bg-linear-to-b from-slate-900 via-slate-925 to-slate-950 border-slate-700/80'
-            }`}>
-          {/* Left Rack Ear (19" Mounting Wing) */}
-          <div className={`w-10 h-36 border-r-2 rounded-l-lg flex flex-col justify-between items-center py-4 -ml-4 mr-4 shrink-0 shadow-inner ${
-            isLight
-              ? 'bg-linear-to-r from-slate-300 to-slate-200 border-slate-400'
-              : 'bg-linear-to-r from-slate-800 to-slate-900 border-slate-700/70'
-          }`}>
-            <div className={`w-4 h-4 rounded-full border-2 shadow-inner flex items-center justify-center ${
-              isLight ? 'border-slate-400 bg-slate-100' : 'border-slate-600 bg-slate-950'
-            }`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${isLight ? 'bg-slate-400' : 'bg-slate-700'}`} />
-            </div>
-            <div className={`w-4 h-4 rounded-full border-2 shadow-inner flex items-center justify-center ${
-              isLight ? 'border-slate-400 bg-slate-100' : 'border-slate-600 bg-slate-950'
-            }`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${isLight ? 'bg-slate-400' : 'bg-slate-700'}`} />
-            </div>
-          </div>
-
-          {/* Left Panel: Brand, Model, Chassis LEDs */}
-          <div className={`w-44 pr-4 border-r shrink-0 flex flex-col justify-between h-32 ${
-            isLight ? 'border-slate-300' : 'border-slate-800'
-          }`}>
-            <div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className={`text-[13px] font-black uppercase tracking-wider font-mono ${
-                  isLight ? 'text-slate-800' : 'text-slate-200'
-                }`}>
-                  {switchData.vendor}
-                </span>
-                {switchData.badge && (
-                  <span
-                    className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-sm text-white shadow-xs"
-                    style={{ backgroundColor: switchData.color || '#3b82f6' }}
-                  >
-                    {switchData.badge}
-                  </span>
-                )}
+            <div className={`min-w-[960px] border-2 rounded-xl p-4 flex items-center relative select-none transition-all duration-200 ${chassisThemeStyles.chassis}`}>
+              {/* Left Rack Ear (19" Mounting Wing) */}
+              <div className={`w-10 h-36 border-r-2 rounded-l-lg flex flex-col justify-between items-center py-4 -ml-4 mr-4 shrink-0 shadow-inner ${chassisThemeStyles.ears}`}>
+                <div className={`w-4 h-4 rounded-full border-2 shadow-inner flex items-center justify-center ${chassisThemeStyles.screws}`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${chassisThemeStyles.screwDot}`} />
+                </div>
+                <div className={`w-4 h-4 rounded-full border-2 shadow-inner flex items-center justify-center ${chassisThemeStyles.screws}`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${chassisThemeStyles.screwDot}`} />
+                </div>
               </div>
-              <div className={`text-[11px] font-semibold font-mono truncate ${
-                isLight ? 'text-slate-600' : 'text-slate-400'
-              }`}>
-                {switchData.model}
-              </div>
-            </div>
 
-            {/* LED Status Indicators */}
-            <div className={`grid grid-cols-2 gap-x-2 gap-y-1.5 p-2 rounded-md border ${
-              isLight ? 'bg-white/80 border-slate-300' : 'bg-slate-950/80 border-slate-800/80'
-            }`}>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
-                <span className={`text-[9px] font-mono font-bold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>PWR</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
-                <span className={`text-[9px] font-mono font-bold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>SYS</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />
-                <span className={`text-[9px] font-mono font-bold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>SPEED</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className={`w-2 h-2 rounded-full ${stats.poe > 0 ? 'bg-amber-400 shadow-[0_0_8px_#f59e0b]' : (isLight ? 'bg-slate-300' : 'bg-slate-700')}`} />
-                <span className={`text-[9px] font-mono font-bold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>PoE</span>
-              </div>
-            </div>
-
-            {/* Management IP on faceplate */}
-            <div className="text-[10px] font-mono text-slate-500 truncate">
-              IP: {switchData.ip || 'DHCP'}
-            </div>
-          </div>
-
-          {/* Central Section: Copper RJ-45 Port Grid */}
-          <div className="flex-1 px-4 flex items-center gap-3">
-            {Array.from({ length: numGroups }).map((_, groupIdx) => {
-              const startIdx = groupIdx * (groupSize / 2);
-              const endIdx = startIdx + (groupSize / 2);
-              const groupTop = topRowPorts.slice(startIdx, endIdx);
-              const groupBottom = bottomRowPorts.slice(startIdx, endIdx);
-
-              return (
-                <div
-                  key={groupIdx}
-                  className={`p-2 border rounded-lg flex flex-col gap-2 shrink-0 shadow-inner ${
-                    isLight ? 'bg-white/80 border-slate-300' : 'bg-slate-950/70 border-slate-800'
-                  }`}
-                >
-                  {/* Top Row (Odd Ports) */}
-                  <div className="flex items-center gap-1.5">
-                    {groupTop.map(port => {
-                      const peerSw = port.linkedSwitchId ? switchesMap[port.linkedSwitchId] : null;
-                      const peerP = peerSw?.ports?.find(p => p.id === port.linkedPortId || p.number === port.linkedPortId);
-
-                      return (
-                        <PortItem
-                          key={port.id}
-                          port={port}
-                          vlanMap={vlanMap}
-                          isSelected={selectedPortIds.includes(port.id)}
-                          onSelect={handleToggleSelect}
-                          onOpenDetails={(p) => onOpenPortDrawer([p])}
-                          highlightVlanId={highlightVlanId}
-                          selectionMode={selectionMode}
-                          showCableTags={showCableTags}
-                          heatmapMode={heatmapMode}
-                          liveTelemetry={portTelemetryMap[port.number]}
-                          showSparklines={showSparklines}
-                          trafficHistory={trafficHistory[port.number] || []}
-                          onOpenChart={(p) => setSelectedChartPort(p)}
-                          peerSwitch={peerSw}
-                          peerPort={peerP}
-                          onJumpToPeer={onJumpToPeer}
-                          theme={theme}
-                        />
-                      );
-                    })}
+              {/* Left Panel: Brand, Model, Chassis LEDs */}
+              <div className={`w-44 pr-4 border-r shrink-0 flex flex-col justify-between h-32 ${chassisThemeStyles.leftPanelBorder}`}>
+                <div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`text-[13px] font-black uppercase tracking-wider font-mono ${chassisThemeStyles.leftPanelText}`}>
+                      {switchData.vendor}
+                    </span>
+                    {switchData.badge && (
+                      <span
+                        className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-sm text-white shadow-xs"
+                        style={{ backgroundColor: switchData.color || '#3b82f6' }}
+                      >
+                        {switchData.badge}
+                      </span>
+                    )}
                   </div>
+                  <div className={`text-[11px] font-semibold font-mono truncate ${chassisThemeStyles.modelText}`}>
+                    {switchData.model}
+                  </div>
+                </div>
 
-                  {/* Bottom Row (Even Ports) */}
-                  {groupBottom.length > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      {groupBottom.map(port => {
+                {/* LED Status Indicators */}
+                <div className={`grid grid-cols-2 gap-x-2 gap-y-1.5 p-2 rounded-md border ${chassisThemeStyles.ledBox}`}>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
+                    <span className={`text-[9px] font-mono font-bold ${chassisThemeStyles.ledLabel}`}>PWR</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
+                    <span className={`text-[9px] font-mono font-bold ${chassisThemeStyles.ledLabel}`}>SYS</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />
+                    <span className={`text-[9px] font-mono font-bold ${chassisThemeStyles.ledLabel}`}>SPEED</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${stats.poe > 0 ? 'bg-amber-400 shadow-[0_0_8px_#f59e0b]' : (isLight ? 'bg-slate-300' : 'bg-slate-700')}`} />
+                    <span className={`text-[9px] font-mono font-bold ${chassisThemeStyles.ledLabel}`}>PoE</span>
+                  </div>
+                </div>
+
+                {/* Management IP on faceplate */}
+                <div className="text-[10px] font-mono text-slate-500 truncate">
+                  IP: {switchData.ip || 'DHCP'}
+                </div>
+              </div>
+
+              {/* Central Section: Copper RJ-45 Port Grid */}
+              <div className="flex-1 px-4 flex items-center gap-3">
+                {Array.from({ length: numGroups }).map((_, groupIdx) => {
+                  const startIdx = groupIdx * (groupSize / 2);
+                  const endIdx = startIdx + (groupSize / 2);
+                  const groupTop = topRowPorts.slice(startIdx, endIdx);
+                  const groupBottom = bottomRowPorts.slice(startIdx, endIdx);
+
+                  return (
+                    <div
+                      key={groupIdx}
+                      className={`p-2 border rounded-lg flex flex-col gap-2 shrink-0 ${chassisThemeStyles.groupBay}`}
+                    >
+                      {/* Top Row (Odd Ports) */}
+                      <div className="flex items-center gap-1.5">
+                        {groupTop.map(port => {
+                          const peerSw = port.linkedSwitchId ? switchesMap[port.linkedSwitchId] : null;
+                          const peerP = peerSw?.ports?.find(p => p.id === port.linkedPortId || p.number === port.linkedPortId);
+
+                          return (
+                            <PortItem
+                              key={port.id}
+                              port={port}
+                              vlanMap={vlanMap}
+                              isSelected={selectedPortIds.includes(port.id)}
+                              onSelect={handleToggleSelect}
+                              onOpenDetails={(p) => onOpenPortDrawer([p])}
+                              highlightVlanId={highlightVlanId}
+                              selectionMode={selectionMode}
+                              showCableTags={showCableTags}
+                              heatmapMode={heatmapMode}
+                              liveTelemetry={portTelemetryMap[port.number]}
+                              showSparklines={showSparklines}
+                              trafficHistory={trafficHistory[port.number] || []}
+                              onOpenChart={(p) => setSelectedChartPort(p)}
+                              peerSwitch={peerSw}
+                              peerPort={peerP}
+                              onJumpToPeer={onJumpToPeer}
+                              theme={theme}
+                              faceplateTheme={faceplateTheme}
+                            />
+                          );
+                        })}
+                      </div>
+
+                      {/* Bottom Row (Even Ports) */}
+                      {groupBottom.length > 0 && (
+                        <div className="flex items-center gap-1.5">
+                          {groupBottom.map(port => {
+                            const peerSw = port.linkedSwitchId ? switchesMap[port.linkedSwitchId] : null;
+                            const peerP = peerSw?.ports?.find(p => p.id === port.linkedPortId || p.number === port.linkedPortId);
+
+                            return (
+                              <PortItem
+                                key={port.id}
+                                port={port}
+                                vlanMap={vlanMap}
+                                isSelected={selectedPortIds.includes(port.id)}
+                                onSelect={handleToggleSelect}
+                                onOpenDetails={(p) => onOpenPortDrawer([p])}
+                                highlightVlanId={highlightVlanId}
+                                selectionMode={selectionMode}
+                                showCableTags={showCableTags}
+                                heatmapMode={heatmapMode}
+                                liveTelemetry={portTelemetryMap[port.number]}
+                                showSparklines={showSparklines}
+                                trafficHistory={trafficHistory[port.number] || []}
+                                onOpenChart={(p) => setSelectedChartPort(p)}
+                                peerSwitch={peerSw}
+                                peerPort={peerP}
+                                onJumpToPeer={onJumpToPeer}
+                                theme={theme}
+                                faceplateTheme={faceplateTheme}
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Right Section: SFP / SFP+ Uplinks */}
+              {sfpPorts.length > 0 && (
+                <div className={`pl-4 border-l shrink-0 ${chassisThemeStyles.sfpBorder}`}>
+                  <div className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest text-center mb-1">
+                    SFP / Uplinks
+                  </div>
+                  <div className={`p-2 border rounded-lg flex flex-col gap-2 ${chassisThemeStyles.sfpBay}`}>
+                    {/* SFP Top Row */}
+                    <div className="flex items-center gap-2">
+                      {sfpTopRow.map(port => {
                         const peerSw = port.linkedSwitchId ? switchesMap[port.linkedSwitchId] : null;
                         const peerP = peerSw?.ports?.find(p => p.id === port.linkedPortId || p.number === port.linkedPortId);
 
@@ -1120,111 +1293,60 @@ export function SwitchFaceplate({
                             peerPort={peerP}
                             onJumpToPeer={onJumpToPeer}
                             theme={theme}
+                            faceplateTheme={faceplateTheme}
                           />
                         );
                       })}
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
 
-          {/* Right Section: SFP / SFP+ Uplinks */}
-          {sfpPorts.length > 0 && (
-            <div className={`pl-4 border-l shrink-0 ${isLight ? 'border-slate-300' : 'border-slate-800'}`}>
-              <div className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest text-center mb-1">
-                SFP / Uplinks
-              </div>
-              <div className={`p-2 border rounded-lg flex flex-col gap-2 shadow-inner ${
-                isLight ? 'bg-white/80 border-slate-300' : 'bg-slate-950/70 border-slate-800'
-              }`}>
-                {/* SFP Top Row */}
-                <div className="flex items-center gap-2">
-                  {sfpTopRow.map(port => {
-                    const peerSw = port.linkedSwitchId ? switchesMap[port.linkedSwitchId] : null;
-                    const peerP = peerSw?.ports?.find(p => p.id === port.linkedPortId || p.number === port.linkedPortId);
+                    {/* SFP Bottom Row */}
+                    {sfpBottomRow.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        {sfpBottomRow.map(port => {
+                          const peerSw = port.linkedSwitchId ? switchesMap[port.linkedSwitchId] : null;
+                          const peerP = peerSw?.ports?.find(p => p.id === port.linkedPortId || p.number === port.linkedPortId);
 
-                    return (
-                      <PortItem
-                        key={port.id}
-                        port={port}
-                        vlanMap={vlanMap}
-                        isSelected={selectedPortIds.includes(port.id)}
-                        onSelect={handleToggleSelect}
-                        onOpenDetails={(p) => onOpenPortDrawer([p])}
-                        highlightVlanId={highlightVlanId}
-                        selectionMode={selectionMode}
-                        showCableTags={showCableTags}
-                        heatmapMode={heatmapMode}
-                        liveTelemetry={portTelemetryMap[port.number]}
-                        showSparklines={showSparklines}
-                        trafficHistory={trafficHistory[port.number] || []}
-                        onOpenChart={(p) => setSelectedChartPort(p)}
-                        peerSwitch={peerSw}
-                        peerPort={peerP}
-                        onJumpToPeer={onJumpToPeer}
-                        theme={theme}
-                      />
-                    );
-                  })}
-                </div>
-
-                {/* SFP Bottom Row */}
-                {sfpBottomRow.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    {sfpBottomRow.map(port => {
-                      const peerSw = port.linkedSwitchId ? switchesMap[port.linkedSwitchId] : null;
-                      const peerP = peerSw?.ports?.find(p => p.id === port.linkedPortId || p.number === port.linkedPortId);
-
-                      return (
-                        <PortItem
-                          key={port.id}
-                          port={port}
-                          vlanMap={vlanMap}
-                          isSelected={selectedPortIds.includes(port.id)}
-                          onSelect={handleToggleSelect}
-                          onOpenDetails={(p) => onOpenPortDrawer([p])}
-                          highlightVlanId={highlightVlanId}
-                          selectionMode={selectionMode}
-                          showCableTags={showCableTags}
-                          heatmapMode={heatmapMode}
-                          liveTelemetry={portTelemetryMap[port.number]}
-                          showSparklines={showSparklines}
-                          trafficHistory={trafficHistory[port.number] || []}
-                          onOpenChart={(p) => setSelectedChartPort(p)}
-                          peerSwitch={peerSw}
-                          peerPort={peerP}
-                          onJumpToPeer={onJumpToPeer}
-                          theme={theme}
-                        />
-                      );
-                    })}
+                          return (
+                            <PortItem
+                              key={port.id}
+                              port={port}
+                              vlanMap={vlanMap}
+                              isSelected={selectedPortIds.includes(port.id)}
+                              onSelect={handleToggleSelect}
+                              onOpenDetails={(p) => onOpenPortDrawer([p])}
+                              highlightVlanId={highlightVlanId}
+                              selectionMode={selectionMode}
+                              showCableTags={showCableTags}
+                              heatmapMode={heatmapMode}
+                              liveTelemetry={portTelemetryMap[port.number]}
+                              showSparklines={showSparklines}
+                              trafficHistory={trafficHistory[port.number] || []}
+                              onOpenChart={(p) => setSelectedChartPort(p)}
+                              peerSwitch={peerSw}
+                              peerPort={peerP}
+                              onJumpToPeer={onJumpToPeer}
+                              theme={theme}
+                              faceplateTheme={faceplateTheme}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
+              )}
+
+              {/* Right Rack Ear */}
+              <div className={`w-10 h-36 border-l-2 rounded-r-lg flex flex-col justify-between items-center py-4 -mr-4 ml-4 shrink-0 shadow-inner ${chassisThemeStyles.rightEar}`}>
+                <div className={`w-4 h-4 rounded-full border-2 shadow-inner flex items-center justify-center ${chassisThemeStyles.screws}`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${chassisThemeStyles.screwDot}`} />
+                </div>
+                <div className={`w-4 h-4 rounded-full border-2 shadow-inner flex items-center justify-center ${chassisThemeStyles.screws}`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${chassisThemeStyles.screwDot}`} />
+                </div>
               </div>
             </div>
-          )}
-
-          {/* Right Rack Ear */}
-          <div className={`w-10 h-36 border-l-2 rounded-r-lg flex flex-col justify-between items-center py-4 -mr-4 ml-4 shrink-0 shadow-inner ${
-            isLight
-              ? 'bg-linear-to-l from-slate-300 to-slate-200 border-slate-400'
-              : 'bg-linear-to-l from-slate-800 to-slate-900 border-slate-700/70'
-          }`}>
-            <div className={`w-4 h-4 rounded-full border-2 shadow-inner flex items-center justify-center ${
-              isLight ? 'border-slate-400 bg-slate-100' : 'border-slate-600 bg-slate-950'
-            }`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${isLight ? 'bg-slate-400' : 'bg-slate-700'}`} />
-            </div>
-            <div className={`w-4 h-4 rounded-full border-2 shadow-inner flex items-center justify-center ${
-              isLight ? 'border-slate-400 bg-slate-100' : 'border-slate-600 bg-slate-950'
-            }`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${isLight ? 'bg-slate-400' : 'bg-slate-700'}`} />
-            </div>
           </div>
-        </div>
-      </div>
 
       {/* HEATMAP & TRAFFIC PULSE LEGEND BANNER */}
       {heatmapMode === 'traffic' && (

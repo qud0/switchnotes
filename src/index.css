@@ -105,6 +105,17 @@
   );
 }
 
+.trunk-stripes-neon {
+  background-size: 8px 8px;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(6, 182, 212, 0.4),
+    rgba(6, 182, 212, 0.4) 3px,
+    transparent 3px,
+    transparent 6px
+  );
+}
+
 /* Print Styles for A4 Passport & Cable Schedule */
 @media print {
   body, html {

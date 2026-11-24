@@ -21,7 +21,8 @@ export function PortItem({
   showSparklines = false,
   trafficHistory = [],
   onOpenChart = null,
-  theme = 'dark'
+  theme = 'dark',
+  faceplateTheme = 'noc'
 }) {
   const isLight = theme === 'light';
   const [showTooltip, setShowTooltip] = useState(false);
@@ -240,9 +241,17 @@ export function PortItem({
         onMouseLeave={handleMouseLeave}
         className={`relative flex flex-col items-center justify-between transition-all duration-150 cursor-pointer select-none rounded-md
           ${isSfp ? 'w-13 h-20 p-1.5' : 'w-11 h-18 p-1'}
-          ${isLight
-            ? (isDisabled ? 'bg-slate-200 border-slate-300 opacity-60' : 'bg-slate-100/90 border')
-            : (isDisabled ? 'bg-slate-900/90 border border-slate-800 opacity-60' : 'bg-slate-800/95 border')
+          ${faceplateTheme === 'noc'
+            ? (isDisabled ? 'bg-[#060a14] border border-slate-800 opacity-50' : 'bg-[#0b1222] border border-slate-700/80')
+            : faceplateTheme === 'neon'
+            ? (isDisabled ? 'bg-[#02050e] border border-cyan-950 opacity-50' : 'bg-[#040816] border')
+            : faceplateTheme === 'vendor'
+            ? (isLight
+                ? (isDisabled ? 'bg-slate-200 border-slate-300 opacity-60' : 'bg-white border-2 border-slate-300 shadow-xs')
+                : (isDisabled ? 'bg-slate-900 border border-slate-800 opacity-60' : 'bg-slate-800 border-2 border-slate-700 shadow-xs'))
+            : (isLight
+                ? (isDisabled ? 'bg-slate-200 border-slate-300 opacity-60' : 'bg-slate-100/90 border')
+                : (isDisabled ? 'bg-slate-900/90 border border-slate-800 opacity-60' : 'bg-slate-800/95 border'))
           }
           ${isSelected
             ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-slate-950 scale-105 z-20 shadow-lg'
@@ -258,13 +267,31 @@ export function PortItem({
               ? '#fbbf24'
               : hasMismatch
                 ? '#ef4444'
+                : faceplateTheme === 'noc'
+                ? '#334155'
+                : faceplateTheme === 'neon'
+                ? accentColor
+                : faceplateTheme === 'vendor'
+                ? (isLight ? '#cbd5e1' : '#475569')
                 : `${accentColor}88`,
-          boxShadow: isSelected ? `0 0 12px ${accentColor}66` : undefined
+          boxShadow: isSelected
+            ? `0 0 12px ${accentColor}66`
+            : faceplateTheme === 'neon'
+            ? `0 0 8px ${accentColor}44`
+            : undefined
         }}
       >
         {/* Top: Port Number & Dual Real-World LEDs (Link/Speed + PoE/Activity) */}
         <div className="w-full flex items-center justify-between text-[10px] font-mono leading-none">
-          <span className={`font-bold ${isLight ? (isSelected ? 'text-blue-600' : 'text-slate-700') : (isSelected ? 'text-blue-400' : 'text-slate-300')}`}>
+          <span className={`font-bold ${
+            faceplateTheme === 'noc'
+              ? (isSelected ? 'text-cyan-400 font-extrabold' : 'text-slate-100 font-extrabold')
+              : faceplateTheme === 'neon'
+              ? (isSelected ? 'text-white' : 'text-cyan-300 font-bold')
+              : faceplateTheme === 'vendor'
+              ? (isLight ? (isSelected ? 'text-blue-600' : 'text-slate-900') : (isSelected ? 'text-blue-400' : 'text-slate-200'))
+              : isLight ? (isSelected ? 'text-blue-600' : 'text-slate-700') : (isSelected ? 'text-blue-400' : 'text-slate-300')
+          }`}>
             {port.number}
           </span>
 
@@ -311,7 +338,11 @@ export function PortItem({
         {isSfp ? (
           /* SFP / SFP+ Optical Cage with LC Duplex Transceiver latch */
           <div className={`w-full h-8.5 rounded-xs border flex flex-col items-center justify-between p-0.5 relative overflow-hidden shadow-inner ${
-            isLight
+            faceplateTheme === 'noc'
+              ? 'bg-gradient-to-b from-[#0b1329] to-[#040817] border-slate-700'
+              : faceplateTheme === 'neon'
+              ? 'bg-gradient-to-b from-[#08152b] to-[#030a17] border-cyan-500/50 shadow-[0_0_8px_rgba(6,182,212,0.2)]'
+              : isLight
               ? 'bg-linear-to-b from-slate-200 to-slate-300 border-slate-400'
               : 'bg-linear-to-b from-slate-800 to-slate-900 border-slate-600/80'
           }`}>
@@ -360,14 +391,32 @@ export function PortItem({
           /* RJ-45 Metallic Shielded Jack with 8 Golden Pins & Notch */
           <div
             className={`w-9 h-8 rounded-xs border flex flex-col items-center justify-between p-0.5 relative transition-colors shadow-inner ${
-              isTrunk ? (isLight ? 'trunk-stripes-light' : 'trunk-stripes') : ''
+              isTrunk
+                ? (faceplateTheme === 'neon'
+                    ? 'trunk-stripes-neon'
+                    : isLight && faceplateTheme !== 'noc'
+                    ? 'trunk-stripes-light'
+                    : 'trunk-stripes')
+                : ''
             }`}
             style={{
               backgroundColor: isDisabled
                 ? (isLight ? '#e2e8f0' : '#0f172a')
+                : faceplateTheme === 'noc'
+                ? '#040712'
+                : faceplateTheme === 'neon'
+                ? '#040816'
+                : faceplateTheme === 'vendor'
+                ? (isLight ? '#e2e8f0' : '#1e293b')
                 : `${accentColor}${isLight ? '33' : '22'}`,
               borderColor: isDisabled
                 ? (isLight ? '#cbd5e1' : '#334155')
+                : faceplateTheme === 'noc'
+                ? '#1e293b'
+                : faceplateTheme === 'neon'
+                ? `${accentColor}88`
+                : faceplateTheme === 'vendor'
+                ? (isLight ? '#94a3b8' : '#475569')
                 : `${accentColor}88`
             }}
           >
@@ -387,15 +436,30 @@ export function PortItem({
 
             {/* RJ-45 Center Guide Slot */}
             <div className={`w-5 h-1 rounded-xs ${
-              isLight ? 'bg-slate-300/80' : 'bg-slate-900/90'
+              faceplateTheme === 'noc'
+                ? 'bg-slate-900 border border-slate-800'
+                : faceplateTheme === 'neon'
+                ? 'bg-[#09152e] border border-cyan-500/40'
+                : isLight
+                ? 'bg-slate-300/80'
+                : 'bg-slate-900/90'
             }`} />
 
             {/* RJ-45 Clip Lock Notch (Защелка коннектора 8P8C) */}
-            <div className={`w-3.5 h-1.5 rounded-t-xs border-t border-x ${
-              isLight
-                ? 'bg-slate-200 border-slate-300'
-                : 'bg-slate-950 border-slate-700'
-            }`} />
+            <div
+              className={`w-3.5 h-1.5 rounded-t-xs border-t border-x ${
+                faceplateTheme === 'noc'
+                  ? 'bg-[#0c1324] border-slate-700'
+                  : faceplateTheme === 'neon'
+                  ? 'bg-[#09152e] border-cyan-500/50'
+                  : isLight
+                  ? 'bg-slate-200 border-slate-300'
+                  : 'bg-slate-950 border-slate-700'
+              }`}
+              style={{
+                borderTopColor: faceplateTheme === 'vendor' ? accentColor : undefined
+              }}
+            />
 
             {/* RJ-45 Disabled (Shutdown) Overlay */}
             {isDisabled && (
@@ -457,6 +521,44 @@ export function PortItem({
               }}
             >
               {speed}
+            </span>
+          ) : faceplateTheme === 'noc' ? (
+            /* NOC High-Contrast Chip: Solid vibrant background with bold white text (Zero blending!) */
+            <span
+              className="inline-block text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-xs shadow-xs text-white tracking-tight"
+              style={{
+                backgroundColor: isTrunk ? '#8b5cf6' : accentColor,
+                border: '1px solid rgba(255,255,255,0.25)',
+                textShadow: '0 1px 2px rgba(0,0,0,0.6)'
+              }}
+            >
+              {isTrunk ? 'TRK' : `V${port.pvid}`}
+            </span>
+          ) : faceplateTheme === 'vendor' ? (
+            /* Vendor Photorealism: TIA-606-C Label Strip */
+            <span
+              className={`inline-block text-[8px] font-mono font-extrabold px-1.5 py-0.5 rounded-2xs border shadow-xs ${
+                isLight ? 'bg-white text-slate-900 border-slate-300' : 'bg-slate-900 text-slate-100 border-slate-600'
+              }`}
+              style={{
+                borderLeftColor: accentColor,
+                borderLeftWidth: '3px'
+              }}
+            >
+              {isTrunk ? 'TRK' : `V${port.pvid}`}
+            </span>
+          ) : faceplateTheme === 'neon' ? (
+            /* Cyberpunk Blueprint: Glowing Neon Chip */
+            <span
+              className="inline-block text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-xs border shadow-xs"
+              style={{
+                backgroundColor: `${accentColor}25`,
+                borderColor: accentColor,
+                color: accentColor,
+                textShadow: `0 0 5px ${accentColor}`
+              }}
+            >
+              {isTrunk ? '⚡TRK' : `V${port.pvid}`}
             </span>
           ) : isTrunk ? (
             <span className="inline-block text-[9px] font-mono font-bold text-purple-600 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/80 px-1 py-0.5 rounded-xs border border-purple-300 dark:border-purple-500/40">
