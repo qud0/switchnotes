@@ -30,6 +30,7 @@ import { analyzeVlanProvisioning, applyVlanProvisioning, executeVlanProvisioning
 import { eventPulseDaemon } from './eventPulseDaemon.js';
 import { configDriftService } from './configDriftService.js';
 import { vlanBlastRadiusEngine } from './vlanBlastRadiusEngine.js';
+import { scanTopology, applyStitchedTopology } from './topologyStitcherService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1887,6 +1888,40 @@ app.post('/api/discovery/lldp/apply-all', requireRole('engineer'), (req, res) =>
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ==================== LLDP/CDP LIVE TOPOLOGY AUTO-STITCHER ====================
+
+// Scan and correlate live topology from SNR NAG & MikroTik
+app.post('/api/topology/stitch/scan', async (req, res) => {
+  try {
+    const report = await scanTopology({
+      storage,
+      mode: req.body?.mode || 'auto',
+      credentials: req.body?.credentials || {}
+    });
+    res.json(report);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Apply stitched topology links with optional pruning
+app.post('/api/topology/stitch/apply', requireRole('engineer'), (req, res) => {
+  try {
+    const { linkIds, pruneMissing, scanReport } = req.body || {};
+    const result = applyStitchedTopology(storage, { linkIds, pruneMissing, scanReport });
+    storage.logAction({
+      entity: 'topology_stitcher',
+      action: 'apply',
+      title: 'Применена топология LLDP/CDP Auto-Stitcher',
+      details: Применено новых линков: , удалено устаревших: \,
+      author: req.user?.username || 'admin'
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 
