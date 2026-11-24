@@ -2,7 +2,7 @@
 
 ## Tasks
 - [x] Task 1: Hardware Pre-Flight & Health Parser
-- [ ] Task 2: Pre-Flight Audit & Guardrail Engine
+- [x] Task 2: Pre-Flight Audit & Guardrail Engine
 - [ ] Task 3: Multi-Stage Canary Rollout Orchestrator Service
 - [ ] Task 4: REST API Endpoints in server/index.js
 - [ ] Task 5: Frontend UI Modal & Integration
