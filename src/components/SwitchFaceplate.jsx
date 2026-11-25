@@ -72,12 +72,13 @@ export function SwitchFaceplate({
   const [showCableTags, setShowCableTags] = useState(false);
   const [heatmapMode, setHeatmapMode] = useState('none'); // 'none' | 'poe' | 'speed'
 
-  // Visual Theme: 'noc' (Enterprise High-Contrast NOC) | 'vendor' (Photorealism & TIA-606-C) | 'neon' (Cyberpunk Blueprint)
+  // Visual Theme: 'classic' (Standard Metallic 19" Rack) | 'vendor' (Photorealism) | 'noc' (Enterprise NOC) | 'neon' (Cyber Blueprint)
   const [faceplateTheme, setFaceplateTheme] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('switchbook_faceplate_theme') || 'noc';
+      const saved = localStorage.getItem('switchbook_faceplate_theme');
+      if (saved && saved !== 'noc') return saved;
     }
-    return 'noc';
+    return 'classic';
   });
 
   const handleThemeChange = (newTheme) => {
@@ -175,7 +176,7 @@ export function SwitchFaceplate({
           sfpBorder: 'border-slate-800'
         };
       case 'vendor':
-        if (isMikrotikVendor) {
+        if (isMikrotikVendor || isLight || String(switchData?.vendor || '').toLowerCase().includes('snr')) {
           return {
             chassis: 'bg-gradient-to-b from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0] border-slate-300 shadow-xl text-slate-900',
             ears: 'bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 border-slate-300 text-slate-600',
@@ -224,20 +225,21 @@ export function SwitchFaceplate({
           sfpBay: 'bg-[#070f20]/90 border border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.12)] rounded-xl',
           sfpBorder: 'border-cyan-500/30'
         };
+      case 'classic':
       default:
         return {
-          chassis: isLight ? 'bg-gradient-to-b from-slate-200 via-slate-100 to-slate-200 border-slate-400' : 'bg-gradient-to-b from-slate-900 via-slate-925 to-slate-950 border-slate-700/80',
-          ears: isLight ? 'bg-gradient-to-r from-slate-300 to-slate-200 border-slate-400' : 'bg-gradient-to-r from-slate-800 to-slate-900 border-slate-700/70',
-          rightEar: isLight ? 'bg-gradient-to-l from-slate-300 to-slate-200 border-slate-400' : 'bg-gradient-to-l from-slate-800 to-slate-900 border-slate-700/70',
-          screws: isLight ? 'border-slate-400 bg-slate-100' : 'border-slate-600 bg-slate-950',
+          chassis: isLight ? 'bg-gradient-to-b from-[#e2e8f0] via-[#f1f5f9] to-[#cbd5e1] border-slate-300 shadow-xl text-slate-900' : 'bg-gradient-to-b from-slate-900 via-slate-925 to-slate-950 border-slate-700/80 text-slate-100 shadow-2xl',
+          ears: isLight ? 'bg-gradient-to-r from-slate-300 via-slate-200 to-slate-300 border-slate-300 text-slate-600 shadow-inner' : 'bg-gradient-to-r from-slate-800 to-slate-900 border-slate-700/70 text-slate-400',
+          rightEar: isLight ? 'bg-gradient-to-l from-slate-300 via-slate-200 to-slate-300 border-slate-300 text-slate-600 shadow-inner' : 'bg-gradient-to-l from-slate-800 to-slate-900 border-slate-700/70 text-slate-400',
+          screws: isLight ? 'border-slate-400 bg-slate-200 shadow-xs' : 'border-slate-600 bg-slate-950',
           screwDot: isLight ? 'bg-slate-400' : 'bg-slate-700',
           leftPanelBorder: isLight ? 'border-slate-300' : 'border-slate-800',
-          leftPanelText: isLight ? 'text-slate-800' : 'text-slate-200',
+          leftPanelText: isLight ? 'text-slate-900' : 'text-slate-200',
           modelText: isLight ? 'text-slate-600' : 'text-slate-400',
-          ledBox: isLight ? 'bg-white/80 border-slate-300' : 'bg-slate-950/80 border-slate-800/80',
-          ledLabel: isLight ? 'text-slate-600' : 'text-slate-400',
-          groupBay: isLight ? 'bg-white/80 border-slate-300' : 'bg-slate-950/70 border-slate-800',
-          sfpBay: isLight ? 'bg-white/80 border-slate-300' : 'bg-slate-950/70 border-slate-800',
+          ledBox: isLight ? 'bg-white/95 border-slate-300 shadow-xs' : 'bg-slate-950/80 border-slate-800/80',
+          ledLabel: isLight ? 'text-slate-700' : 'text-slate-400',
+          groupBay: isLight ? 'bg-white/90 border border-slate-300 shadow-inner rounded-xl' : 'bg-slate-950/70 border-slate-800',
+          sfpBay: isLight ? 'bg-white/90 border border-slate-300 shadow-inner rounded-xl' : 'bg-slate-950/70 border-slate-800',
           sfpBorder: isLight ? 'border-slate-300' : 'border-slate-800'
         };
     }
@@ -1086,16 +1088,16 @@ export function SwitchFaceplate({
               }`}>
                 <button
                   type="button"
-                  onClick={() => handleThemeChange('noc')}
+                  onClick={() => handleThemeChange('classic')}
                   className={`h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    faceplateTheme === 'noc'
-                      ? 'bg-slate-950 text-cyan-400 border border-cyan-500/50 shadow-xs'
+                    faceplateTheme === 'classic' || (!faceplateTheme || faceplateTheme === 'default')
+                      ? 'bg-blue-600 text-white shadow-xs'
                       : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
                   }`}
-                  title="NOC High-Contrast: тёмное экранированное шасси"
+                  title={isLight ? "Классика: заводское светлое металлическое шасси" : "Классика: стандартное шасси 19\""}
                 >
-                  <Shield className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>NOC</span>
+                  <Sliders className="w-3.5 h-3.5" />
+                  <span>Классика</span>
                 </button>
                 <button
                   type="button"
@@ -1109,6 +1111,19 @@ export function SwitchFaceplate({
                 >
                   <Server className="w-3.5 h-3.5" />
                   <span>Реализм</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleThemeChange('noc')}
+                  className={`h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    faceplateTheme === 'noc'
+                      ? 'bg-slate-950 text-cyan-400 border border-cyan-500/50 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="NOC High-Contrast: тёмное экранированное шасси"
+                >
+                  <Shield className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>NOC</span>
                 </button>
                 <button
                   type="button"
@@ -1411,7 +1426,7 @@ export function SwitchFaceplate({
 
                   return (
                     <div key={groupIdx} className="flex flex-col items-center">
-                      <div className={`h-4 flex items-center justify-center uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-1 ${fontStyles.sfpHeader}`}>
+                      <div className={`h-4 flex items-center justify-center uppercase tracking-widest ${isLight ? 'text-slate-600 font-bold' : 'text-slate-400 dark:text-slate-500'} mb-1 ${fontStyles.sfpHeader}`}>
                         {firstPortNum}{lastPortNum && lastPortNum !== firstPortNum ? ` - ${lastPortNum}` : ''}
                       </div>
                       <div
@@ -1494,7 +1509,7 @@ export function SwitchFaceplate({
               {/* SFP / SFP+ Uplinks Bay (adjacent to copper bays with matching height) */}
               {sfpPorts.length > 0 && (
                 <div className="flex flex-col items-center">
-                  <div className={`h-4 flex items-center justify-center uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-1 ${fontStyles.sfpHeader}`}>
+                  <div className={`h-4 flex items-center justify-center uppercase tracking-widest ${isLight ? 'text-slate-600 font-bold' : 'text-slate-400 dark:text-slate-500'} mb-1 ${fontStyles.sfpHeader}`}>
                     SFP {sfpPorts[0]?.number}{sfpPorts.length > 1 ? ` - ${sfpPorts[sfpPorts.length - 1]?.number}` : ''}
                   </div>
                   <div className={`p-2 border rounded-lg flex flex-col gap-2 shrink-0 ${chassisThemeStyles.sfpBay}`}>
@@ -1574,8 +1589,8 @@ export function SwitchFaceplate({
 
               {/* Right Section: Chassis Ventilation & Airflow (Fills remaining 19" rack space) */}
               <div className="flex-1 h-32 flex items-center justify-end px-6 min-w-[80px]">
-                <div className="flex items-center gap-6 opacity-35 hover:opacity-60 transition-opacity select-none">
-                  <div className="hidden xl:flex flex-col items-center gap-0.5 text-[9px] font-mono text-slate-500 uppercase tracking-widest">
+                <div className={`flex items-center gap-6 ${isLight ? 'opacity-55 hover:opacity-85' : 'opacity-35 hover:opacity-60'} transition-opacity select-none`}>
+                  <div className={`hidden xl:flex flex-col items-center gap-0.5 text-[9px] font-mono ${isLight ? 'text-slate-600 font-bold' : 'text-slate-500'} uppercase tracking-widest`}>
                     <span>Airflow</span>
                     <span className="text-[11px] leading-none">➔➔➔</span>
                   </div>
@@ -1584,7 +1599,7 @@ export function SwitchFaceplate({
                       <div
                         key={i}
                         className={`w-1 h-14 rounded-full ${
-                          isLight ? 'bg-slate-300' : 'bg-slate-800 border-r border-slate-700/60 shadow-inner'
+                          isLight ? 'bg-slate-300 border-r border-slate-400/50 shadow-inner' : 'bg-slate-800 border-r border-slate-700/60 shadow-inner'
                         }`}
                       />
                     ))}

@@ -282,7 +282,7 @@ export function PortItem({
                 ? (isDisabled ? 'bg-slate-200 border-slate-300 opacity-60' : 'bg-white border-2 border-slate-300 shadow-xs')
                 : (isDisabled ? 'bg-slate-900 border border-slate-800 opacity-60' : 'bg-slate-800 border-2 border-slate-700 shadow-xs'))
             : (isLight
-                ? (isDisabled ? 'bg-slate-200 border-slate-300 opacity-60' : 'bg-slate-100/90 border')
+                ? (isDisabled ? 'bg-slate-200 border-slate-300 opacity-60' : 'bg-white border-2 border-slate-300 shadow-xs')
                 : (isDisabled ? 'bg-slate-900/90 border border-slate-800 opacity-60' : 'bg-slate-800/95 border'))
           }
           ${isSelected
