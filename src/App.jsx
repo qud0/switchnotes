@@ -52,6 +52,7 @@ const NetworkDiscoveryModal = lazy(() => import('./components/NetworkDiscoveryMo
 const ConfigTemplateModal = lazy(() => import('./components/ConfigTemplateModal').then(m => ({ default: m.ConfigTemplateModal })));
 const VlanBlastRadiusModal = lazy(() => import('./components/VlanBlastRadiusModal'));
 const ConfigDriftRadarModal = lazy(() => import('./components/ConfigDriftRadarModal').then(m => ({ default: m.ConfigDriftRadarModal })));
+const FleetGitBackupModal = lazy(() => import('./components/FleetGitBackupModal').then(m => ({ default: m.FleetGitBackupModal })));
 import LoginModal from './components/LoginModal';
 import UsersModal from './components/UsersModal';
 import { useToast } from './context/ToastContext';
@@ -177,6 +178,7 @@ export default function App() {
   const [isBlastRadiusOpen, setIsBlastRadiusOpen] = useState(false);
   const [blastRadiusSwitchId, setBlastRadiusSwitchId] = useState('');
   const [isDriftRadarOpen, setIsDriftRadarOpen] = useState(false);
+  const [isFleetGitModalOpen, setIsFleetGitModalOpen] = useState(false);
 
   // Zoom scale state: 70% to 150%
   const [zoomLevel, setZoomLevel] = useState(() => {
@@ -934,6 +936,7 @@ export default function App() {
           setIsWebSerialOpen(true);
         }}
         onOpenDriftRadar={() => setIsDriftRadarOpen(true)}
+        onOpenFleetGitModal={() => setIsFleetGitModalOpen(true)}
         unreadAlertsCount={unreadAlertsCount}
         auditIssuesCount={auditSummary.counts.total}
         auditHealthScore={auditSummary.healthScore}
@@ -1000,6 +1003,7 @@ export default function App() {
               setIsPoeModalOpen(true);
             }}
             onOpenDriftRadar={() => setIsDriftRadarOpen(true)}
+            onOpenFleetGitModal={() => setIsFleetGitModalOpen(true)}
             theme={theme}
           />
         ) : currentView === 'servers' ? (
@@ -1704,6 +1708,13 @@ export default function App() {
           onReloadData={fetchData}
           theme={theme}
         />
+
+        {/* Fleet Network Configuration Git Versioning & Backup Hub Modal */}
+        <FleetGitBackupModal
+          isOpen={isFleetGitModalOpen}
+          onClose={() => setIsFleetGitModalOpen(false)}
+          theme={theme}
+        />
       </Suspense>
 
       {/* Global Command Palette (Ctrl+K / Cmd+K) */}
@@ -1728,6 +1739,7 @@ export default function App() {
         onOpenAuditModal={() => setIsAuditModalOpen(true)}
         onOpenDiscoveryModal={() => setIsDiscoveryModalOpen(true)}
         onOpenDriftRadar={() => setIsDriftRadarOpen(true)}
+        onOpenFleetGitModal={() => setIsFleetGitModalOpen(true)}
         onOpenPoeModal={(swId) => {
           setPoeModalSwitchId(swId || selectedSwitchId || switches[0]?.id);
           setIsPoeModalOpen(true);

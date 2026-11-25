@@ -274,6 +274,170 @@ class GitBackupService {
       return { success: false, error: err.message };
     }
   }
+
+  /**
+   * Получение детального статуса версионирования для каждого устройства флота
+   */
+  async getFleetStatus() {
+    await this.initRepo();
+    const switches = storage.getSwitches() || [];
+    const baseStatus = await this.getStatus();
+
+    const fleet = [];
+    let backedUpCount = 0;
+    let committedCount = 0;
+
+    for (const sw of switches) {
+      const vendor = (sw.vendor || 'Generic').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const switchName = (sw.name || sw.id || 'switch').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const vLower = (sw.vendor || '').toLowerCase();
+      let ext = 'cfg';
+      if (vLower.includes('mikrotik')) ext = 'rsc';
+      else if (vLower.includes('snr')) ext = 'cfg';
+      else if (vLower.includes('ubiquiti')) ext = 'cfg';
+
+      const relFilePath = `${vendor}/${switchName}.${ext}`;
+      const fullPath = path.join(this.repoPath, relFilePath);
+      const fileExistsInGit = fs.existsSync(fullPath);
+
+      const backups = storage.getBackups ? storage.getBackups(sw.id) : [];
+      const latestBackup = backups[0] || null;
+      if (latestBackup) backedUpCount++;
+
+      // Check if file is committed in git
+      let isCommitted = false;
+      let lastCommitHash = null;
+      let lastCommitDate = null;
+
+      if (fileExistsInGit) {
+        try {
+          const { stdout: diffOut } = await execAsync(`git status --porcelain "${relFilePath}"`, { cwd: this.repoPath });
+          isCommitted = !diffOut.trim();
+          if (isCommitted) committedCount++;
+
+          const { stdout: logOut } = await execAsync(`git log -n 1 --pretty=format:"%H|%ad" --date=iso -- "${relFilePath}"`, { cwd: this.repoPath });
+          if (logOut.trim()) {
+            const [h, d] = logOut.trim().split('|');
+            lastCommitHash = h ? h.substring(0, 7) : null;
+            lastCommitDate = d || null;
+          }
+        } catch (_) {}
+      }
+
+      fleet.push({
+        id: sw.id,
+        name: sw.name,
+        ip: sw.ip || '0.0.0.0',
+        vendor: sw.vendor || 'Unknown',
+        model: sw.model || 'Unknown',
+        hasBackup: Boolean(latestBackup),
+        lastBackupDate: latestBackup?.timestamp || null,
+        backupId: latestBackup?.id || null,
+        gitFile: relFilePath,
+        fileExistsInGit,
+        isCommitted,
+        lastCommitHash,
+        lastCommitDate
+      });
+    }
+
+    return {
+      success: true,
+      repoPath: this.repoPath,
+      totalSwitches: switches.length,
+      backedUpCount,
+      committedCount,
+      commitsCount: baseStatus.commitsCount || 0,
+      remoteUrl: baseStatus.remoteUrl || '',
+      fleet
+    };
+  }
+
+  /**
+   * Получение diff конкретного коммита
+   */
+  async getCommitDiff(commitHash) {
+    await this.initRepo();
+    if (!commitHash || !/^[a-f0-9]{4,40}$/i.test(commitHash)) {
+      throw new Error('Некорректный хэш коммита');
+    }
+
+    try {
+      const { stdout: diffOut } = await execFileAsync('git', ['show', '--unified=3', commitHash], { cwd: this.repoPath });
+      const { stdout: logOut } = await execFileAsync('git', ['log', '-n', '1', '--pretty=format:"%H|%an|%ad|%s"', '--date=iso', commitHash], { cwd: this.repoPath });
+      
+      const cleanLog = logOut.replace(/^"|"$/g, '').trim();
+      const [hash, author, date, message] = cleanLog.split('|');
+
+      return {
+        success: true,
+        commitHash: hash || commitHash,
+        shortHash: (hash || commitHash).substring(0, 7),
+        author,
+        date,
+        message,
+        diff: diffOut
+      };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Получение детального журнала коммитов с затронутыми файлами
+   */
+  async getFleetCommitLog(limit = 50) {
+    await this.initRepo();
+    try {
+      const { stdout: logOut } = await execAsync(`git log -n ${limit} --pretty=format:"%H|%an|%ad|%s" --date=iso`, { cwd: this.repoPath });
+      const commits = [];
+
+      const lines = logOut.trim().split('\n').filter(Boolean);
+      for (const line of lines) {
+        const [hash, author, date, message] = line.split('|');
+        if (!hash) continue;
+        
+        let files = [];
+        try {
+          const { stdout: filesOut } = await execAsync(`git show --name-only --oneline ${hash}`, { cwd: this.repoPath });
+          files = filesOut.trim().split('\n').slice(1).filter(Boolean);
+        } catch (_) {}
+
+        commits.push({
+          hash,
+          shortHash: hash.substring(0, 7),
+          author,
+          date,
+          message,
+          files
+        });
+      }
+
+      return { success: true, commits };
+    } catch (err) {
+      return { success: false, commits: [], error: err.message };
+    }
+  }
+
+  /**
+   * Создание полного ZIP-архива конфигураций флота
+   */
+  async createFleetZipArchive() {
+    await this.initRepo();
+    const tempZipPath = path.join(this.repoPath, `fleet-configs-archive-${Date.now()}.zip`);
+    
+    try {
+      await execAsync(`tar -a -c -f "${tempZipPath}" --exclude=".git" *`, { cwd: this.repoPath });
+      const buffer = fs.readFileSync(tempZipPath);
+      try { fs.unlinkSync(tempZipPath); } catch (_) {}
+      return buffer;
+    } catch (err) {
+      if (fs.existsSync(tempZipPath)) {
+        try { fs.unlinkSync(tempZipPath); } catch (_) {}
+      }
+      throw new Error(`Ошибка создания архива: ${err.message}`);
+    }
+  }
 }
 
 export const gitBackupService = new GitBackupService();

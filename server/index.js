@@ -603,6 +603,53 @@ app.post('/api/backups/git/push', requireRole('admin'), async (req, res) => {
   }
 });
 
+// Get fleet-wide Git backup status across all switches
+app.get('/api/backups/git/fleet-status', async (req, res) => {
+  try {
+    const status = await gitBackupService.getFleetStatus();
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get fleet-wide Git commits log with affected files
+app.get('/api/backups/git/commits', async (req, res) => {
+  try {
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+    const result = await gitBackupService.getFleetCommitLog(limit);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get unified git diff for a specific commit hash
+app.get('/api/backups/git/diff/:hash', async (req, res) => {
+  try {
+    const result = await gitBackupService.getCommitDiff(req.params.hash);
+    if (!result.success) {
+      return res.status(404).json({ error: result.error || 'Коммит не найден' });
+    }
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Download full ZIP archive of all fleet configurations
+app.get('/api/backups/git/download-archive', async (req, res) => {
+  try {
+    const archiveBuffer = await gitBackupService.createFleetZipArchive();
+    const dateStr = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="switchbook-fleet-configs-${dateStr}.zip"`);
+    res.send(archiveBuffer);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get specific backup by ID
 app.get('/api/backups/:id', (req, res) => {
   try {

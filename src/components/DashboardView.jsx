@@ -3,7 +3,7 @@ import {
   Activity, RefreshCw, Server, Zap, CheckCircle2, XCircle, 
   AlertTriangle, ShieldAlert, Cpu, HardDrive, Layers, Globe, 
   ArrowRight, Radio, ExternalLink, Clock, TrendingUp, Sparkles,
-  Wifi, Cable, Check
+  Wifi, Cable, Check, GitBranch
 } from 'lucide-react';
 import { api } from '../api';
 
@@ -17,6 +17,7 @@ export default function DashboardView({
   onOpenMacDiscovery,
   onOpenPoeModal,
   onOpenDriftRadar,
+  onOpenFleetGitModal,
   theme = 'dark'
 }) {
   const [loading, setLoading] = useState(false);
@@ -175,6 +176,21 @@ export default function DashboardView({
                     {driftStatus.drifted}
                   </span>
                 )}
+              </button>
+            )}
+
+            {onOpenFleetGitModal && (
+              <button
+                onClick={onOpenFleetGitModal}
+                className={`h-9 px-3.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  isLight
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                }`}
+                title="Центр Git-версионирования конфигураций сети и авто-бэкапов флота"
+              >
+                <GitBranch className="w-3.5 h-3.5 text-blue-500" />
+                <span>Git-бэкапы</span>
               </button>
             )}
 

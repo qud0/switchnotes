@@ -22,7 +22,8 @@ import {
   Radio,
   Tag,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  GitBranch
 } from 'lucide-react';
 
 export function CommandPalette({
@@ -41,6 +42,7 @@ export function CommandPalette({
   onOpenDiscoveryModal,
   onOpenPoeModal,
   onOpenDriftRadar,
+  onOpenFleetGitModal,
   onOpenTroubleshoot,
   onToggleTheme,
   theme = 'dark'
@@ -106,6 +108,13 @@ export function CommandPalette({
       category: 'Действия',
       icon: ShieldAlert,
       action: () => onOpenDriftRadar?.()
+    },
+    {
+      id: 'act-fleet-git',
+      label: 'Центр Git-бэкапов флота (Версионирование конфигураций сети)',
+      category: 'Действия',
+      icon: GitBranch,
+      action: () => onOpenFleetGitModal?.()
     },
     {
       id: 'act-poe',

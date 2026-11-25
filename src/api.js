@@ -966,6 +966,29 @@ export const api = {
     return res.json();
   },
 
+  getFleetGitStatus: async () => {
+    const res = await fetch(`${API_BASE}/backups/git/fleet-status`);
+    if (!res.ok) throw new Error('Не удалось получить статус Git-версионирования флота');
+    return res.json();
+  },
+
+  getFleetGitCommits: async (limit = 50) => {
+    const res = await fetch(`${API_BASE}/backups/git/commits?limit=${limit}`);
+    if (!res.ok) throw new Error('Не удалось получить историю Git-коммитов');
+    return res.json();
+  },
+
+  getGitCommitDiff: async (hash) => {
+    const res = await fetch(`${API_BASE}/backups/git/diff/${hash}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Не удалось получить diff коммита');
+    }
+    return res.json();
+  },
+
+  downloadFleetArchiveUrl: () => `${API_BASE}/backups/git/download-archive`,
+
   // Network Auto-Discovery & LLDP Topology
   discoverNetwork: async (params = {}) => {
     const res = await fetch(`${API_BASE}/discovery/scan`, {
