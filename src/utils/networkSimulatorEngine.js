@@ -692,3 +692,314 @@ export function verifyLabSolution(labId, { nodes = [], links = [] }) {
     checks: [{ label: 'Режим свободной топологии', pass: true }]
   };
 }
+
+/**
+ * Catalog of 4 Practical Troubleshooting Exam Incidents
+ */
+export const EXAM_INCIDENTS = [
+  {
+    id: 'inc-1-pvid',
+    title: 'Инцидент #1: Бухгалтерия отрезана от сервера 1С',
+    difficulty: 'Базовый',
+    category: 'L2 Access VLAN',
+    symptom: 'Бухгалтер сообщает: 1С не открывается, сервер базы данных недоступен. Проверьте подключение ПК к локальной сети.',
+    initialNodes: [
+      createLabNode({ id: 'pc-acc', type: 'pc', name: 'PC-Бухгалтер', ip: '192.168.10.25', mask: '255.255.255.0', x: 120, y: 180 }),
+      createLabNode({
+        id: 'sw-access',
+        type: 'switch',
+        name: 'SW-Access-01',
+        x: 380,
+        y: 180,
+        ports: [
+          { id: 'p1', number: 1, mode: 'access', pvid: 20, allowedVlans: [20] }, // Broken: PVID is 20 instead of 10
+          { id: 'p2', number: 2, mode: 'access', pvid: 10, allowedVlans: [10] },
+          { id: 'p3', number: 3, mode: 'access', pvid: 10, allowedVlans: [10] },
+          { id: 'p4', number: 4, mode: 'access', pvid: 1, allowedVlans: [1] }
+        ]
+      }),
+      createLabNode({ id: 'srv-1c', type: 'server', name: 'Server-1C-Base', ip: '192.168.10.100', mask: '255.255.255.0', x: 640, y: 180 })
+    ],
+    initialLinks: [
+      createLabLink({ id: 'lnk-1', sourceNodeId: 'pc-acc', targetNodeId: 'sw-access', targetPortId: 'p1' }),
+      createLabLink({ id: 'lnk-2', sourceNodeId: 'sw-access', sourcePortId: 'p2', targetNodeId: 'srv-1c', targetPortId: 'eth0' })
+    ],
+    hints: [
+      'Проблема на уровне L2: один из узлов не попадает в нужный широковещательный домен (VLAN).',
+      'ПК бухгалтера подключен к порту p1 коммутатора SW-Access-01.',
+      'Откройте настройки порта p1 на SW-Access-01 и измените PVID с 20 на 10.'
+    ]
+  },
+  {
+    id: 'inc-2-trunk',
+    title: 'Инцидент #2: Изоляция этажей (Trunk Pruned VLAN)',
+    difficulty: 'Средний',
+    category: 'L2 Trunking',
+    symptom: 'Сотрудники склада на 2-м этаже (VLAN 20) не могут связаться с терминалом выдачи на 1-м этаже через межэтажный кабель.',
+    initialNodes: [
+      createLabNode({ id: 'pc-sklad-1', type: 'pc', name: 'Терминал-Этаж-1', ip: '10.20.0.10', mask: '255.255.255.0', x: 100, y: 180 }),
+      createLabNode({
+        id: 'sw-fl-1',
+        type: 'switch',
+        name: 'SW-Этаж-1',
+        x: 340,
+        y: 180,
+        ports: [
+          { id: 'p1', number: 1, mode: 'access', pvid: 20, allowedVlans: [20] },
+          { id: 'p8', number: 8, mode: 'trunk', pvid: 1, allowedVlans: [1, 10] } // Broken: missing VLAN 20
+        ]
+      }),
+      createLabNode({
+        id: 'sw-fl-2',
+        type: 'switch',
+        name: 'SW-Этаж-2',
+        x: 580,
+        y: 180,
+        ports: [
+          { id: 'p1', number: 1, mode: 'access', pvid: 20, allowedVlans: [20] },
+          { id: 'p8', number: 8, mode: 'trunk', pvid: 1, allowedVlans: [1, 10, 20] }
+        ]
+      }),
+      createLabNode({ id: 'pc-sklad-2', type: 'pc', name: 'Терминал-Этаж-2', ip: '10.20.0.20', mask: '255.255.255.0', x: 820, y: 180 })
+    ],
+    initialLinks: [
+      createLabLink({ id: 'lnk-1', sourceNodeId: 'pc-sklad-1', targetNodeId: 'sw-fl-1', targetPortId: 'p1' }),
+      createLabLink({ id: 'lnk-trunk', sourceNodeId: 'sw-fl-1', sourcePortId: 'p8', targetNodeId: 'sw-fl-2', targetPortId: 'p8' }),
+      createLabLink({ id: 'lnk-2', sourceNodeId: 'sw-fl-2', sourcePortId: 'p1', targetNodeId: 'pc-sklad-2', targetPortId: 'eth0' })
+    ],
+    hints: [
+      'Оба ПК находятся в VLAN 20, но между свитчами проходит магистральный транк-линк.',
+      'Проверьте список разрешенных VLAN (Allowed VLANs) на 8-м порту свитча SW-Этаж-1.',
+      'Добавьте VLAN 20 в Allowed VLANs порта 8 на SW-Этаж-1.'
+    ]
+  },
+  {
+    id: 'inc-3-gateway',
+    title: 'Инцидент #3: Опечатка в шлюзе по умолчанию (Inter-VLAN)',
+    difficulty: 'Продвинутый',
+    category: 'L3 Routing',
+    symptom: 'Рабочая станция инженера (VLAN 10) отправляет пинг на сервер БД (VLAN 20), но ответа нет. Маршрутизатор включен.',
+    initialNodes: [
+      createLabNode({ id: 'pc-client', type: 'pc', name: 'Клиент-VLAN10', ip: '192.168.10.15', mask: '255.255.255.0', gateway: '192.168.10.1', x: 120, y: 220 }),
+      createLabNode({
+        id: 'sw-access',
+        type: 'switch',
+        name: 'SW-Core',
+        x: 360,
+        y: 220,
+        ports: [
+          { id: 'p1', number: 1, mode: 'access', pvid: 10, allowedVlans: [10] },
+          { id: 'p2', number: 2, mode: 'access', pvid: 20, allowedVlans: [20] },
+          { id: 'p8', number: 8, mode: 'trunk', pvid: 1, allowedVlans: [10, 20] }
+        ]
+      }),
+      createLabNode({
+        id: 'r-gw',
+        type: 'router',
+        name: 'R-Border',
+        x: 360,
+        y: 60,
+        interfaces: [
+          { id: 'if-10', name: 'vlan10', vlanId: 10, ip: '192.168.10.1', mask: '255.255.255.0' },
+          { id: 'if-20', name: 'vlan20', vlanId: 20, ip: '192.168.20.1', mask: '255.255.255.0' }
+        ]
+      }),
+      createLabNode({
+        id: 'srv-db',
+        type: 'server',
+        name: 'Server-DB',
+        ip: '192.168.20.100',
+        mask: '255.255.255.0',
+        gateway: '192.168.10.1', // Broken: Gateway is 10.1 instead of 20.1
+        x: 620,
+        y: 220
+      })
+    ],
+    initialLinks: [
+      createLabLink({ id: 'lnk-1', sourceNodeId: 'pc-client', targetNodeId: 'sw-access', targetPortId: 'p1' }),
+      createLabLink({ id: 'lnk-router', sourceNodeId: 'sw-access', sourcePortId: 'p8', targetNodeId: 'r-gw', targetPortId: 'eth0' }),
+      createLabLink({ id: 'lnk-2', sourceNodeId: 'sw-access', sourcePortId: 'p2', targetNodeId: 'srv-db', targetPortId: 'eth0' })
+    ],
+    hints: [
+      'Пакеты между разными подсетями требуют правильной настройки шлюзов на обоих конечных узлах.',
+      'Проверьте сетевые параметры сервера Server-DB: его IP находится в подсети 192.168.20.0/24.',
+      'Замените шлюз на Server-DB с 192.168.10.1 на 192.168.20.1.'
+    ]
+  },
+  {
+    id: 'inc-4-cable',
+    title: 'Инцидент #4: Обрыв физического линка к веб-серверу',
+    difficulty: 'Базовый',
+    category: 'L1 Physical Link',
+    symptom: 'Сотрудники не могут открыть внутренний веб-портал. Сервер оффлайн, индикатор порта свитча погас.',
+    initialNodes: [
+      createLabNode({ id: 'pc-user', type: 'pc', name: 'PC-Пользователь', ip: '172.16.0.50', mask: '255.255.255.0', x: 140, y: 180 }),
+      createLabNode({
+        id: 'sw-office',
+        type: 'switch',
+        name: 'SW-Office',
+        x: 380,
+        y: 180,
+        ports: [
+          { id: 'p1', number: 1, mode: 'access', pvid: 1, allowedVlans: [1] },
+          { id: 'p2', number: 2, mode: 'access', pvid: 1, allowedVlans: [1] },
+          { id: 'p3', number: 3, mode: 'access', pvid: 1, allowedVlans: [1] }
+        ]
+      }),
+      createLabNode({ id: 'srv-web', type: 'server', name: 'Web-Portal', ip: '172.16.0.200', mask: '255.255.255.0', x: 620, y: 180 })
+    ],
+    initialLinks: [
+      createLabLink({ id: 'lnk-1', sourceNodeId: 'pc-user', targetNodeId: 'sw-office', targetPortId: 'p1' })
+      // Missing cable to srv-web!
+    ],
+    hints: [
+      'Проверьте уровень L1 модели OSI: все ли узлы имеют физическое соединение кабелем.',
+      'Сервер Web-Portal не подключен кабелем ни к одному порту свитча.',
+      'Протяните кабель от сетевого интерфейса eth0 сервера Web-Portal к свободному порту коммутатора SW-Office.'
+    ]
+  }
+];
+
+/**
+ * Deep clones an incident's topology for safe execution
+ */
+export function generateIncident(incidentId) {
+  const inc = EXAM_INCIDENTS.find(i => i.id === incidentId) || EXAM_INCIDENTS[0];
+  return {
+    ...inc,
+    nodes: JSON.parse(JSON.stringify(inc.initialNodes)),
+    links: JSON.parse(JSON.stringify(inc.initialLinks))
+  };
+}
+
+/**
+ * Validates whether the trainee has successfully solved the incident
+ */
+export function verifyIncidentSolution(incidentId, { nodes = [], links = [] }) {
+  const nodeMap = new Map();
+  nodes.forEach(n => nodeMap.set(n.id, n));
+
+  if (incidentId === 'inc-1-pvid') {
+    const sw = nodeMap.get('sw-access');
+    const p1 = (sw?.ports || []).find(p => p.id === 'p1' || p.number === 1);
+    const p1Correct = p1?.pvid === 10;
+
+    const pingRes = simulatePing({ sourceNodeId: 'pc-acc', targetNodeId: 'srv-1c', nodes, links });
+    const solved = p1Correct && pingRes.success;
+
+    return {
+      solved,
+      feedback: solved
+        ? 'Отлично сработано! PVID порта 1 переключен на VLAN 10, связь с сервером 1С восстановлена.'
+        : 'Связь пока не работает. Проверьте номер VLAN (PVID) на порту, куда подключен ПК бухгалтера.',
+      checks: [
+        { label: 'Порт 1 на коммутаторе SW-Access переведен в VLAN 10 (Бухгалтерия)', pass: p1Correct },
+        { label: 'Успешный пинг между ПК бухгалтера и сервером 1С', pass: pingRes.success }
+      ]
+    };
+  }
+
+  if (incidentId === 'inc-2-trunk') {
+    const sw1 = nodeMap.get('sw-fl-1');
+    const p8 = (sw1?.ports || []).find(p => p.id === 'p8' || p.number === 8);
+    const hasVlan20 = Boolean(p8?.mode === 'trunk' && p8?.allowedVlans?.includes(20));
+
+    const pingRes = simulatePing({ sourceNodeId: 'pc-sklad-1', targetNodeId: 'pc-sklad-2', nodes, links });
+    const solved = hasVlan20 && pingRes.success;
+
+    return {
+      solved,
+      feedback: solved
+        ? 'Блестяще! VLAN 20 добавлен в транковый порт SW-Этаж-1, межэтажный канал пропускает трафик склада.'
+        : 'Складские терминалы не видят друг друга. Убедитесь, что VLAN 20 разрешен в Allowed VLANs на транке.',
+      checks: [
+        { label: 'Порт 8 на SW-Этаж-1 пропускает VLAN 20 в Trunk', pass: hasVlan20 },
+        { label: 'Успешный пинг между терминалами склада разных этажей', pass: pingRes.success }
+      ]
+    };
+  }
+
+  if (incidentId === 'inc-3-gateway') {
+    const srv = nodeMap.get('srv-db');
+    const gwCorrect = srv?.gateway === '192.168.20.1';
+
+    const pingRes = simulatePing({ sourceNodeId: 'pc-client', targetNodeId: 'srv-db', nodes, links });
+    const solved = gwCorrect && pingRes.success;
+
+    return {
+      solved,
+      feedback: solved
+        ? 'Превосходно! Опечатка в шлюзе сервера устранена, пакеты между подсетями успешно маршрутизируются.'
+        : 'Связь не установлена. Проверьте адрес шлюза по умолчанию на сервере базы данных.',
+      checks: [
+        { label: 'Сервер базы данных имеет корректный шлюз 192.168.20.1', pass: gwCorrect },
+        { label: 'Успешная маршрутизация между клиентом и сервером БД', pass: pingRes.success }
+      ]
+    };
+  }
+
+  if (incidentId === 'inc-4-cable') {
+    const pingRes = simulatePing({ sourceNodeId: 'pc-user', targetNodeId: 'srv-web', nodes, links });
+    const solved = pingRes.success;
+
+    return {
+      solved,
+      feedback: solved
+        ? 'Отличная работа! Физический линк к веб-серверу восстановлен, портал снова доступен.'
+        : 'Веб-сервер недоступен. Убедитесь, что кабель соединяет сетевой порт сервера и свитча.',
+      checks: [
+        { label: 'Кабель подключен между сервером Web-Portal и коммутатором', pass: solved },
+        { label: 'Успешный пинг до веб-сервера', pass: solved }
+      ]
+    };
+  }
+
+  return {
+    solved: true,
+    feedback: 'Инцидент успешно разрешен.',
+    checks: [{ label: 'Проверка пройдена', pass: true }]
+  };
+}
+
+/**
+ * Calculates final exam score out of 100 based on time elapsed and hints used
+ */
+export function calculateExamScore({ timeSpentSeconds = 0, hintsUsed = [], maxTimeSeconds = 600 }) {
+  let score = 100;
+
+  // Penalties for hints
+  if (hintsUsed.includes(1)) score -= 5;
+  if (hintsUsed.includes(2)) score -= 10;
+  if (hintsUsed.includes(3)) score -= 25;
+
+  // Time penalty
+  if (timeSpentSeconds > 420) {
+    score -= 20; // > 7 minutes
+  } else if (timeSpentSeconds > 180) {
+    score -= 10; // > 3 minutes
+  }
+
+  score = Math.max(0, Math.min(100, score));
+
+  let grade = 'TRAINEE';
+  let title = 'Требуется дополнительное обучение';
+
+  if (score >= 90) {
+    grade = 'MASTER';
+    title = 'Ведущий сетевой инженер';
+  } else if (score >= 75) {
+    grade = 'PROFICIENT';
+    title = 'Сетевой администратор';
+  } else if (score >= 60) {
+    grade = 'JUNIOR';
+    title = 'Младший специалист / Стажер';
+  }
+
+  return {
+    score,
+    grade,
+    title,
+    timeSpentSeconds,
+    hintsUsedCount: hintsUsed.length
+  };
+}

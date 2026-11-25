@@ -218,3 +218,58 @@ test('verifyLabSolution identifies unfinished and finished states for Lab 1', ()
   assert.equal(finRes.solved, true);
   assert.ok(finRes.feedback.includes('Отлично'));
 });
+
+test('EXAM_INCIDENTS catalog defines 4 troubleshooting incidents with hints and broken states', async () => {
+  const { EXAM_INCIDENTS, generateIncident, verifyIncidentSolution, calculateExamScore } = await import('../src/utils/networkSimulatorEngine.js');
+
+  assert.equal(EXAM_INCIDENTS.length, 4);
+
+  EXAM_INCIDENTS.forEach(inc => {
+    assert.ok(inc.id);
+    assert.ok(inc.title);
+    assert.ok(inc.symptom);
+    assert.equal(inc.hints.length, 3);
+  });
+
+  // Incident 1: Access VLAN mismatch
+  const inc1 = generateIncident('inc-1-pvid');
+  const brokenRes1 = verifyIncidentSolution('inc-1-pvid', { nodes: inc1.nodes, links: inc1.links });
+  assert.equal(brokenRes1.solved, false);
+
+  // Fix incident 1: set PVID 10 on port 1 of SW-1
+  const fixedNodes1 = inc1.nodes.map(n => {
+    if (n.id === 'sw-access') {
+      return {
+        ...n,
+        ports: n.ports.map(p => (p.id === 'p1' ? { ...p, pvid: 10 } : p))
+      };
+    }
+    return n;
+  });
+  const fixedRes1 = verifyIncidentSolution('inc-1-pvid', { nodes: fixedNodes1, links: inc1.links });
+  assert.equal(fixedRes1.solved, true);
+
+  // Incident 3: Gateway misconfiguration
+  const inc3 = generateIncident('inc-3-gateway');
+  const brokenRes3 = verifyIncidentSolution('inc-3-gateway', { nodes: inc3.nodes, links: inc3.links });
+  assert.equal(brokenRes3.solved, false);
+
+  // Fix incident 3: set correct gateway 192.168.20.1 on srv-db
+  const fixedNodes3 = inc3.nodes.map(n => {
+    if (n.id === 'srv-db') {
+      return { ...n, gateway: '192.168.20.1' };
+    }
+    return n;
+  });
+  const fixedRes3 = verifyIncidentSolution('inc-3-gateway', { nodes: fixedNodes3, links: inc3.links });
+  assert.equal(fixedRes3.solved, true);
+
+  // Score calculation
+  const score100 = calculateExamScore({ timeSpentSeconds: 120, hintsUsed: [] });
+  assert.equal(score100.score, 100);
+  assert.equal(score100.grade, 'MASTER');
+
+  const scoreWithHints = calculateExamScore({ timeSpentSeconds: 300, hintsUsed: [1, 2] });
+  // -10 time (300s > 180s), -5 hint 1, -10 hint 2 = 75
+  assert.equal(scoreWithHints.score, 75);
+});

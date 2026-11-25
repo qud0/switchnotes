@@ -24,14 +24,23 @@ import {
   Award,
   ArrowRight,
   RefreshCw,
-  HelpCircle
+  HelpCircle,
+  Timer,
+  Lightbulb,
+  Trophy,
+  Flame,
+  ShieldAlert
 } from 'lucide-react';
 import {
   createLabNode,
   createLabLink,
   simulatePing,
   verifyLabSolution,
-  PRESET_LABS
+  PRESET_LABS,
+  EXAM_INCIDENTS,
+  generateIncident,
+  verifyIncidentSolution,
+  calculateExamScore
 } from '../utils/networkSimulatorEngine';
 import { useToast } from '../context/ToastContext';
 
@@ -63,6 +72,36 @@ export function NetworkLabView({ theme = 'dark' }) {
   // Lab Evaluation
   const [labEvaluation, setLabEvaluation] = useState(null);
   const [showEvaluationModal, setShowEvaluationModal] = useState(false);
+
+  // Exam Mode States
+  const [labMode, setLabMode] = useState('training'); // 'training' | 'exam' | 'custom'
+  const [activeIncidentId, setActiveIncidentId] = useState('inc-1-pvid');
+  const [examTimerSeconds, setExamTimerSeconds] = useState(600);
+  const [examTimerRunning, setExamTimerRunning] = useState(false);
+  const [revealedHints, setRevealedHints] = useState([]);
+  const [examScoreResult, setExamScoreResult] = useState(null);
+  const [showVictoryModal, setShowVictoryModal] = useState(false);
+  const [showHintsModal, setShowHintsModal] = useState(false);
+
+  const activeIncident = EXAM_INCIDENTS.find(i => i.id === activeIncidentId);
+
+  // Timer Effect
+  useEffect(() => {
+    let interval = null;
+    if (labMode === 'exam' && examTimerRunning && examTimerSeconds > 0) {
+      interval = setInterval(() => {
+        setExamTimerSeconds(prev => {
+          if (prev <= 1) {
+            setExamTimerRunning(false);
+            toast?.warning?.('Время экзамена истекло!');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [labMode, examTimerRunning, examTimerSeconds]);
 
   // Dragging State
   const [draggingNodeId, setDraggingNodeId] = useState(null);
@@ -97,6 +136,75 @@ export function NetworkLabView({ theme = 'dark' }) {
   // Reset current lab to default state
   const handleResetLab = () => {
     handleSelectLab(activeLabId);
+  };
+
+  // Exam mode handlers
+  const handleSelectIncident = (incidentId) => {
+    setActiveIncidentId(incidentId);
+    setSelectedNodeId(null);
+    setPingResult(null);
+    setConnectSource(null);
+    setRevealedHints([]);
+    setExamTimerSeconds(600);
+    setExamTimerRunning(true);
+    setExamScoreResult(null);
+
+    const incident = generateIncident(incidentId);
+    setNodes(incident.nodes);
+    setLinks(incident.links);
+    toast?.info?.(`Запущен инцидент: ${incident.title}`);
+  };
+
+  const handleResetIncident = () => {
+    handleSelectIncident(activeIncidentId);
+  };
+
+  const handleRevealNextHint = () => {
+    const nextIdx = revealedHints.length + 1;
+    if (nextIdx <= 3) {
+      setRevealedHints(prev => [...prev, nextIdx]);
+      const penalties = { 1: '-5 очков', 2: '-10 очков', 3: '-25 очков' };
+      toast?.warning?.(`Подсказка #${nextIdx} открыта (штраф: ${penalties[nextIdx]})`);
+    }
+  };
+
+  const handleVerifyExamSolution = () => {
+    const result = verifyIncidentSolution(activeIncidentId, { nodes, links });
+    if (result.solved) {
+      setExamTimerRunning(false);
+      const scoreData = calculateExamScore({
+        timeSpentSeconds: 600 - examTimerSeconds,
+        hintsUsed: revealedHints
+      });
+      setExamScoreResult(scoreData);
+      setShowVictoryModal(true);
+      toast?.success?.('Отлично! Инцидент успешно устранен!');
+    } else {
+      toast?.error?.(result.feedback || 'Связь не восстановлена. Проверьте настройки оборудования или запустите пинг.');
+    }
+  };
+
+  const handleSwitchMode = (mode) => {
+    setLabMode(mode);
+    setSelectedNodeId(null);
+    setPingResult(null);
+    setConnectSource(null);
+
+    if (mode === 'training') {
+      setExamTimerRunning(false);
+      handleSelectLab(activeLabId || 'lab-1');
+    } else if (mode === 'exam') {
+      handleSelectIncident(activeIncidentId || 'inc-1-pvid');
+    } else if (mode === 'custom') {
+      setExamTimerRunning(false);
+      handleSelectLab('custom');
+    }
+  };
+
+  const formatTimer = (totalSec) => {
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
   // Add a new node
@@ -299,25 +407,85 @@ export function NetworkLabView({ theme = 'dark' }) {
             </p>
           </div>
 
-          {/* Lab Selector Dropdown */}
-          <div className="ml-2">
-            <select
-              value={activeLabId}
-              onChange={e => handleSelectLab(e.target.value)}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-medium transition-colors cursor-pointer ${
-                isLight
-                  ? 'bg-slate-50 border-slate-300 text-slate-800'
-                  : 'bg-slate-800 border-slate-700 text-slate-100'
+          {/* Mode Selector Tabs */}
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs ml-2">
+            <button
+              onClick={() => handleSwitchMode('training')}
+              className={`px-2.5 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                labMode === 'training'
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white'
               }`}
             >
-              {PRESET_LABS.map(lab => (
-                <option key={lab.id} value={lab.id}>
-                  {lab.title} ({lab.difficulty})
-                </option>
-              ))}
-              <option value="custom">Свободный холст (Песочница)</option>
-            </select>
+              <GraduationCap className="w-3.5 h-3.5" />
+              <span>Обучающие лабы</span>
+            </button>
+
+            <button
+              onClick={() => handleSwitchMode('exam')}
+              className={`px-2.5 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                labMode === 'exam'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Trophy className="w-3.5 h-3.5" />
+              <span>🏆 Экзаменатор</span>
+            </button>
+
+            <button
+              onClick={() => handleSwitchMode('custom')}
+              className={`px-2.5 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                labMode === 'custom'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Песочница</span>
+            </button>
           </div>
+
+          {/* Lab / Incident Selector Dropdown */}
+          {labMode === 'training' && (
+            <div className="ml-1">
+              <select
+                value={activeLabId}
+                onChange={e => handleSelectLab(e.target.value)}
+                className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-medium transition-colors cursor-pointer ${
+                  isLight
+                    ? 'bg-slate-50 border-slate-300 text-slate-800'
+                    : 'bg-slate-800 border-slate-700 text-slate-100'
+                }`}
+              >
+                {PRESET_LABS.map(lab => (
+                  <option key={lab.id} value={lab.id}>
+                    {lab.title} ({lab.difficulty})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {labMode === 'exam' && (
+            <div className="ml-1">
+              <select
+                value={activeIncidentId}
+                onChange={e => handleSelectIncident(e.target.value)}
+                className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-bold transition-colors cursor-pointer ${
+                  isLight
+                    ? 'bg-amber-50 border-amber-300 text-amber-900'
+                    : 'bg-amber-950/40 border-amber-600/40 text-amber-200'
+                }`}
+              >
+                {EXAM_INCIDENTS.map(inc => (
+                  <option key={inc.id} value={inc.id}>
+                    {inc.title} ({inc.difficulty})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Center: Tool Modes */}
@@ -413,7 +581,7 @@ export function NetworkLabView({ theme = 'dark' }) {
 
           {/* Reset button */}
           <button
-            onClick={handleResetLab}
+            onClick={labMode === 'exam' ? handleResetIncident : handleResetLab}
             className={`p-2 rounded-lg border transition-colors cursor-pointer ${
               isLight ? 'border-slate-300 text-slate-600 hover:bg-slate-100' : 'border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-white'
             }`}
@@ -423,7 +591,7 @@ export function NetworkLabView({ theme = 'dark' }) {
           </button>
 
           {/* Verify Solution Button */}
-          {activeLab && (
+          {labMode === 'training' && activeLab && (
             <button
               onClick={handleVerifySolution}
               className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-purple-500/20 cursor-pointer"
@@ -432,11 +600,67 @@ export function NetworkLabView({ theme = 'dark' }) {
               <span>Проверить решение</span>
             </button>
           )}
+
+          {labMode === 'exam' && (
+            <button
+              onClick={handleVerifyExamSolution}
+              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
+            >
+              <Trophy className="w-4 h-4" />
+              <span>Сдать экзамен (Проверить)</span>
+            </button>
+          )}
         </div>
       </div>
 
+      {/* Exam HUD Sub-bar */}
+      {labMode === 'exam' && activeIncident && (
+        <div className={`px-4 py-2.5 border-b text-xs flex flex-wrap items-center justify-between gap-3 shrink-0 ${
+          isLight ? 'bg-amber-50/80 border-amber-200 text-amber-950' : 'bg-amber-950/30 border-amber-800/40 text-amber-200'
+        }`}>
+          {/* Left: Timer and Difficulty */}
+          <div className="flex items-center gap-3">
+            <div className={`px-3 py-1 rounded-xl border flex items-center gap-1.5 font-mono font-bold text-xs ${
+              examTimerSeconds <= 120
+                ? 'bg-rose-500/20 border-rose-500/40 text-rose-400 animate-pulse'
+                : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+            }`}>
+              <Timer className="w-3.5 h-3.5" />
+              <span>{formatTimer(examTimerSeconds)}</span>
+            </div>
+
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              {activeIncident.difficulty} • {activeIncident.category}
+            </span>
+          </div>
+
+          {/* Center: Symptom text */}
+          <div className="flex-1 max-w-2xl flex items-center gap-2 overflow-hidden text-xs">
+            <ShieldAlert className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0" />
+            <span className="font-semibold text-slate-900 dark:text-slate-200" title={activeIncident.symptom}>
+              {activeIncident.symptom}
+            </span>
+          </div>
+
+          {/* Right: Hints Button */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setShowHintsModal(true)}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                isLight
+                  ? 'border-amber-400 bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold'
+                  : 'border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300'
+              }`}
+            >
+              <Lightbulb className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span>Подсказки ({revealedHints.length}/3)</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Lab Objective Sub-bar */}
-      {activeLab && (
+      {labMode === 'training' && activeLab && (
         <div className={`px-4 py-2.5 border-b text-xs flex items-center justify-between shrink-0 ${
           isLight ? 'bg-purple-50/70 border-purple-200 text-purple-900' : 'bg-purple-950/20 border-purple-800/40 text-purple-200'
         }`}>
@@ -1040,6 +1264,162 @@ export function NetworkLabView({ theme = 'dark' }) {
                 className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md shadow-purple-500/20 cursor-pointer"
               >
                 Проверить снова
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Exam Hints Modal */}
+      {showHintsModal && activeIncident && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className={`w-full max-w-lg rounded-2xl shadow-2xl p-5 border ${
+            isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900 border-slate-800 text-white'
+          }`}>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-700/60 mb-4">
+              <div className="flex items-center gap-2">
+                <Lightbulb className="w-5 h-5 text-amber-400" />
+                <h3 className="text-base font-bold font-mono">Подсказки по инциденту</h3>
+              </div>
+              <button onClick={() => setShowHintsModal(false)} className="p-1 rounded text-slate-400 hover:text-white cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 mb-6 text-xs font-mono">
+              {activeIncident.hints.map((hintText, idx) => {
+                const hintNum = idx + 1;
+                const isRevealed = revealedHints.includes(hintNum);
+                const penalty = hintNum === 1 ? '-5' : hintNum === 2 ? '-10' : '-25';
+
+                return (
+                  <div key={idx} className={`p-3 rounded-xl border ${
+                    isRevealed
+                      ? (isLight ? 'bg-amber-100/80 border-amber-300 text-amber-950' : 'bg-amber-500/10 border-amber-500/30 text-amber-200')
+                      : (isLight ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-slate-800/40 border-slate-700/40 text-slate-400')
+                  }`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`font-bold text-[11px] uppercase ${isLight ? 'text-amber-900' : 'text-amber-300'}`}>
+                        Подсказка #{hintNum} {isRevealed ? '(Открыта)' : `(Штраф: ${penalty} очков)`}
+                      </span>
+                    </div>
+                    {isRevealed ? (
+                      <p className={`leading-relaxed font-semibold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{hintText}</p>
+                    ) : (
+                      <p className={`italic ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Подсказка скрыта. Нажмите «Открыть подсказку» ниже.</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-700/60">
+              <span className="text-[11px] text-slate-400 font-mono">
+                Открыто подсказок: {revealedHints.length} из 3
+              </span>
+
+              <div className="flex items-center gap-2">
+                {revealedHints.length < 3 && (
+                  <button
+                    onClick={handleRevealNextHint}
+                    className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Lightbulb className="w-3.5 h-3.5" />
+                    <span>Открыть подсказку #{revealedHints.length + 1}</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowHintsModal(false)}
+                  className="px-4 py-1.5 rounded-xl border border-slate-700 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer"
+                >
+                  Закрыть
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Exam Victory Modal */}
+      {showVictoryModal && examScoreResult && activeIncident && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className={`w-full max-w-lg rounded-3xl shadow-2xl p-6 border text-center ${
+            isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900 border-amber-500/30 text-white'
+          }`}>
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 mx-auto flex items-center justify-center mb-4 shadow-lg shadow-amber-500/20">
+              <Trophy className="w-8 h-8" />
+            </div>
+
+            <h3 className="text-xl font-bold font-mono">Экзамен сдан! Инцидент решен</h3>
+            <p className={`text-xs mt-1 max-w-sm mx-auto ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+              {activeIncident.title} успешно устранен. Связь в сети полностью восстановлена.
+            </p>
+
+            {/* Score Display */}
+            <div className={`my-5 p-4 rounded-2xl border max-w-xs mx-auto ${
+              isLight ? 'bg-amber-50 border-amber-300' : 'bg-amber-500/10 border-amber-500/20'
+            }`}>
+              <div className={`text-[11px] font-mono uppercase tracking-wider font-bold ${
+                isLight ? 'text-amber-800' : 'text-amber-400'
+              }`}>
+                Итоговый балл
+              </div>
+              <div className={`text-4xl font-extrabold font-mono my-1 ${
+                isLight ? 'text-amber-600' : 'text-amber-300'
+              }`}>
+                {examScoreResult.score} <span className={`text-base font-normal ${isLight ? 'text-amber-700/80' : 'text-amber-500/80'}`}>/ 100</span>
+              </div>
+              <div className={`inline-block px-3 py-1 rounded-full text-xs font-bold mt-1 ${
+                isLight ? 'bg-amber-200/80 text-amber-900 border border-amber-300' : 'bg-amber-500/20 text-amber-300'
+              }`}>
+                🏆 {examScoreResult.title}
+              </div>
+            </div>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 gap-3 text-xs font-mono mb-6">
+              <div className={`p-3 rounded-xl border ${
+                isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-800/40 border-slate-700/60'
+              }`}>
+                <div className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Затраченное время</div>
+                <div className={`text-sm font-bold mt-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                  {formatTimer(examScoreResult.timeSpentSeconds)}
+                </div>
+              </div>
+              <div className={`p-3 rounded-xl border ${
+                isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-800/40 border-slate-700/60'
+              }`}>
+                <div className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Подсказок открыто</div>
+                <div className={`text-sm font-bold mt-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                  {examScoreResult.hintsUsedCount} из 3
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-center gap-3">
+              <button
+                onClick={() => {
+                  setShowVictoryModal(false);
+                  handleResetIncident();
+                }}
+                className={`px-4 py-2.5 rounded-xl border text-xs font-semibold cursor-pointer transition-colors ${
+                  isLight ? 'border-slate-300 text-slate-700 hover:bg-slate-100' : 'border-slate-700 text-slate-300 hover:text-white'
+                }`}
+              >
+                Попробовать снова
+              </button>
+              <button
+                onClick={() => {
+                  setShowVictoryModal(false);
+                  const currentIdx = EXAM_INCIDENTS.findIndex(i => i.id === activeIncidentId);
+                  const nextInc = EXAM_INCIDENTS[(currentIdx + 1) % EXAM_INCIDENTS.length];
+                  handleSelectIncident(nextInc.id);
+                }}
+                className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-lg shadow-amber-500/25 flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>Следующий инцидент</span>
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
