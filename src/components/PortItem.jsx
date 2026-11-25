@@ -276,7 +276,7 @@ export function PortItem({
           ${faceplateTheme === 'noc'
             ? (isDisabled ? 'bg-[#060a14] border border-slate-800 opacity-50' : 'bg-[#0b1222] border border-slate-700/80')
             : faceplateTheme === 'neon'
-            ? (isDisabled ? 'bg-[#02050e] border border-cyan-950 opacity-50' : 'bg-[#040816] border')
+            ? (isDisabled ? 'bg-[#060c1c] border border-cyan-950/60 opacity-50' : 'bg-[#121f3d] border-2 border-cyan-500/50 shadow-[0_0_8px_rgba(6,182,212,0.15)] hover:border-cyan-300 hover:shadow-[0_0_12px_rgba(6,182,212,0.4)]')
             : faceplateTheme === 'vendor'
             ? (isLight
                 ? (isDisabled ? 'bg-slate-200 border-slate-300 opacity-60' : 'bg-white border-2 border-slate-300 shadow-xs')
@@ -303,14 +303,14 @@ export function PortItem({
                 : faceplateTheme === 'noc'
                 ? '#334155'
                 : faceplateTheme === 'neon'
-                ? accentColor
+                ? (accentColor || '#06b6d4')
                 : faceplateTheme === 'vendor'
                 ? (isLight ? '#cbd5e1' : '#475569')
                 : `${accentColor}88`,
           boxShadow: isSelected
             ? `0 0 12px ${accentColor}66`
             : faceplateTheme === 'neon'
-            ? `0 0 8px ${accentColor}44`
+            ? `0 0 10px ${accentColor || '#06b6d4'}66`
             : undefined
         }}
       >
@@ -352,7 +352,7 @@ export function PortItem({
               faceplateTheme === 'noc'
                 ? (isSelected ? 'text-cyan-400 font-extrabold' : 'text-slate-100 font-extrabold')
                 : faceplateTheme === 'neon'
-                ? (isSelected ? 'text-white' : 'text-cyan-300 font-bold')
+                ? (isSelected ? 'text-white' : 'text-cyan-200 font-extrabold drop-shadow-[0_0_4px_rgba(6,182,212,0.6)]')
                 : faceplateTheme === 'vendor'
                 ? (isLight ? (isSelected ? 'text-blue-600' : 'text-slate-900') : (isSelected ? 'text-blue-400' : 'text-slate-200'))
                 : isLight ? (isSelected ? 'text-blue-600' : 'text-slate-700') : (isSelected ? 'text-blue-400' : 'text-slate-300')
@@ -361,7 +361,11 @@ export function PortItem({
             </span>
             {port.lagId && (
               <span
-                className="text-[7px] font-black px-0.5 py-0.2 rounded-2xs bg-indigo-500/25 text-indigo-400 border border-indigo-500/40 shrink-0"
+                className={`text-[7px] font-black px-0.5 py-0.2 rounded-2xs border shrink-0 ${
+                  faceplateTheme === 'neon'
+                    ? 'bg-indigo-950/80 text-cyan-200 border-cyan-400/60 shadow-[0_0_4px_rgba(6,182,212,0.4)]'
+                    : 'bg-indigo-500/25 text-indigo-400 border border-indigo-500/40'
+                }`}
                 title={`Входит в группу агрегации LAG ${port.lagId}`}
               >
                 L{port.lagId}
@@ -415,7 +419,7 @@ export function PortItem({
             faceplateTheme === 'noc'
               ? 'bg-gradient-to-b from-[#0b1329] to-[#040817] border-slate-700'
               : faceplateTheme === 'neon'
-              ? 'bg-gradient-to-b from-[#08152b] to-[#030a17] border-cyan-500/50 shadow-[0_0_8px_rgba(6,182,212,0.2)]'
+              ? 'bg-gradient-to-b from-[#0f1d3b] to-[#081226] border-2 border-cyan-400/60 shadow-[0_0_12px_rgba(6,182,212,0.3)]'
               : isLight
               ? 'bg-linear-to-b from-slate-200 to-slate-300 border-slate-400'
               : 'bg-linear-to-b from-slate-800 to-slate-900 border-slate-600/80'
@@ -479,7 +483,7 @@ export function PortItem({
                 : faceplateTheme === 'noc'
                 ? '#040712'
                 : faceplateTheme === 'neon'
-                ? '#040816'
+                ? '#070f22'
                 : faceplateTheme === 'vendor'
                 ? (isLight ? '#e2e8f0' : '#1e293b')
                 : `${accentColor}${isLight ? '33' : '22'}`,
@@ -488,7 +492,7 @@ export function PortItem({
                 : faceplateTheme === 'noc'
                 ? '#1e293b'
                 : faceplateTheme === 'neon'
-                ? `${accentColor}88`
+                ? '#06b6d499'
                 : faceplateTheme === 'vendor'
                 ? (isLight ? '#94a3b8' : '#475569')
                 : `${accentColor}88`
@@ -513,7 +517,7 @@ export function PortItem({
               faceplateTheme === 'noc'
                 ? 'bg-slate-900 border border-slate-800'
                 : faceplateTheme === 'neon'
-                ? 'bg-[#09152e] border border-cyan-500/40'
+                ? 'bg-[#0f1f3d] border border-cyan-400/50'
                 : isLight
                 ? 'bg-slate-300/80'
                 : 'bg-slate-900/90'
@@ -525,7 +529,7 @@ export function PortItem({
                 faceplateTheme === 'noc'
                   ? 'bg-[#0c1324] border-slate-700'
                   : faceplateTheme === 'neon'
-                  ? 'bg-[#09152e] border-cyan-500/50'
+                  ? 'bg-[#0a162c] border-cyan-400/70 shadow-[0_0_4px_rgba(6,182,212,0.4)]'
                   : isLight
                   ? 'bg-slate-200 border-slate-300'
                   : 'bg-slate-950 border-slate-700'
@@ -554,9 +558,11 @@ export function PortItem({
             <span
               className={`inline-block px-1 py-0.2 rounded-xs border transition-all font-mono font-bold text-[8px] ${badgeFont}`}
               style={{
-                backgroundColor: `${accentColor}25`,
-                borderColor: `${accentColor}66`,
-                color: accentColor
+                backgroundColor: faceplateTheme === 'neon' ? `${accentColor}ee` : `${accentColor}25`,
+                borderColor: faceplateTheme === 'neon' ? '#ffffffcc' : `${accentColor}66`,
+                color: faceplateTheme === 'neon' ? '#ffffff' : accentColor,
+                boxShadow: faceplateTheme === 'neon' ? `0 0 8px ${accentColor}` : undefined,
+                textShadow: faceplateTheme === 'neon' ? '0 1px 2px rgba(0,0,0,0.9)' : undefined
               }}
               title={`Текущий суммарный трафик: ↓ ${rxMbps} / ↑ ${txMbps} Мбит/с`}
             >
@@ -570,9 +576,10 @@ export function PortItem({
             <span
               className={`inline-block px-1 py-0.5 rounded-xs border ${badgeFont}`}
               style={{
-                backgroundColor: `${accentColor}25`,
-                borderColor: `${accentColor}55`,
-                color: accentColor
+                backgroundColor: faceplateTheme === 'neon' ? `${accentColor}ee` : `${accentColor}25`,
+                borderColor: faceplateTheme === 'neon' ? '#ffffffcc' : `${accentColor}55`,
+                color: faceplateTheme === 'neon' ? '#ffffff' : accentColor,
+                boxShadow: faceplateTheme === 'neon' ? `0 0 8px ${accentColor}` : undefined
               }}
             >
               {port.poe ? `${poeWatts.toFixed(0)}W` : '0W'}
@@ -581,9 +588,10 @@ export function PortItem({
             <span
               className="inline-block text-[8px] font-mono font-bold px-1 py-0.5 rounded-xs border"
               style={{
-                backgroundColor: `${accentColor}25`,
-                borderColor: `${accentColor}55`,
-                color: accentColor
+                backgroundColor: faceplateTheme === 'neon' ? `${accentColor}ee` : `${accentColor}25`,
+                borderColor: faceplateTheme === 'neon' ? '#ffffffcc' : `${accentColor}55`,
+                color: faceplateTheme === 'neon' ? '#ffffff' : accentColor,
+                boxShadow: faceplateTheme === 'neon' ? `0 0 8px ${accentColor}` : undefined
               }}
             >
               {speed}
@@ -614,17 +622,17 @@ export function PortItem({
               {isTrunk ? 'TRK' : `V${port.pvid}`}
             </span>
           ) : faceplateTheme === 'neon' ? (
-            /* Cyberpunk Blueprint: Glowing Neon Chip */
+            /* Cyberpunk Blueprint: High-Contrast Glowing Neon Badge */
             <span
-              className={`inline-block px-1.5 py-0.5 rounded-xs border shadow-xs ${badgeFont}`}
+              className={`inline-block px-1.5 py-0.5 rounded-xs border font-extrabold text-white text-[8px] tracking-tight ${badgeFont}`}
               style={{
-                backgroundColor: `${accentColor}25`,
-                borderColor: accentColor,
-                color: accentColor,
-                textShadow: `0 0 5px ${accentColor}`
+                backgroundColor: isTrunk ? '#8b5cf6e6' : `${accentColor}dd`,
+                borderColor: '#ffffffcc',
+                boxShadow: `0 0 10px ${isTrunk ? '#a855f7' : accentColor}`,
+                textShadow: '0 1px 2px rgba(0,0,0,0.9)'
               }}
             >
-              {isTrunk ? '⚡TRK' : `V${port.pvid}`}
+              {isTrunk ? 'TRK' : `V${port.pvid}`}
             </span>
           ) : isTrunk ? (
             <span className={`inline-block text-purple-600 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/80 px-1 py-0.5 rounded-xs border border-purple-300 dark:border-purple-500/40 ${badgeFont}`}>

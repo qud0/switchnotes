@@ -211,19 +211,19 @@ export function SwitchFaceplate({
         }
       case 'neon':
         return {
-          chassis: 'bg-[#030712] border-cyan-500/50 shadow-[0_0_30px_rgba(6,182,212,0.2)] text-slate-100',
-          ears: 'bg-[#070e1c] border-cyan-500/40 text-cyan-400',
-          rightEar: 'bg-[#070e1c] border-cyan-500/40 text-cyan-400',
-          screws: 'border-cyan-500/60 bg-[#09152b]',
-          screwDot: 'bg-cyan-400',
-          leftPanelBorder: 'border-cyan-500/30',
-          leftPanelText: 'text-cyan-300',
-          modelText: 'text-cyan-400/80',
-          ledBox: 'bg-[#070f20]/90 border-cyan-500/30',
-          ledLabel: 'text-cyan-200',
-          groupBay: 'bg-[#070f20]/90 border border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.12)] rounded-xl',
-          sfpBay: 'bg-[#070f20]/90 border border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.12)] rounded-xl',
-          sfpBorder: 'border-cyan-500/30'
+          chassis: 'bg-gradient-to-b from-[#050b18] via-[#091226] to-[#040814] border-2 border-cyan-500/60 shadow-[0_0_35px_rgba(6,182,212,0.25)] text-slate-100',
+          ears: 'bg-gradient-to-r from-[#030712] via-[#0b152d] to-[#040918] border-r-2 border-cyan-500/50 text-cyan-300 shadow-[inset_0_0_12px_rgba(6,182,212,0.2)]',
+          rightEar: 'bg-gradient-to-l from-[#030712] via-[#0b152d] to-[#040918] border-l-2 border-cyan-500/50 text-cyan-300 shadow-[inset_0_0_12px_rgba(6,182,212,0.2)]',
+          screws: 'border-2 border-cyan-400/80 bg-[#0c1836] shadow-[0_0_8px_rgba(6,182,212,0.4)]',
+          screwDot: 'bg-cyan-300 shadow-[0_0_4px_#22d3ee]',
+          leftPanelBorder: 'border-cyan-500/40',
+          leftPanelText: 'text-cyan-300 font-extrabold tracking-wider drop-shadow-[0_0_8px_rgba(6,182,212,0.6)]',
+          modelText: 'text-slate-200 font-semibold',
+          ledBox: 'bg-[#0a142c]/95 border border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.15)]',
+          ledLabel: 'text-cyan-200 font-bold',
+          groupBay: 'bg-[#0b152c]/95 border-2 border-cyan-500/50 shadow-[inset_0_2px_12px_rgba(0,0,0,0.8),0_0_15px_rgba(6,182,212,0.15)] rounded-xl',
+          sfpBay: 'bg-[#0b152c]/95 border-2 border-cyan-500/50 shadow-[inset_0_2px_12px_rgba(0,0,0,0.8),0_0_15px_rgba(6,182,212,0.15)] rounded-xl',
+          sfpBorder: 'border-cyan-500/40'
         };
       case 'classic':
       default:
@@ -1409,7 +1409,7 @@ export function SwitchFaceplate({
                 </div>
 
                 {/* Management IP on faceplate */}
-                <div className={`text-slate-500 truncate ${fontStyles.ip}`}>
+                <div className={`truncate ${fontStyles.ip} ${faceplateTheme === 'neon' ? 'text-cyan-400 font-mono drop-shadow-[0_0_4px_rgba(6,182,212,0.4)]' : isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                   IP: {switchData.ip || 'DHCP'}
                 </div>
               </div>
@@ -1426,7 +1426,7 @@ export function SwitchFaceplate({
 
                   return (
                     <div key={groupIdx} className="flex flex-col items-center">
-                      <div className={`h-4 flex items-center justify-center uppercase tracking-widest ${isLight ? 'text-slate-600 font-bold' : 'text-slate-400 dark:text-slate-500'} mb-1 ${fontStyles.sfpHeader}`}>
+                      <div className={`h-4 flex items-center justify-center uppercase tracking-widest ${faceplateTheme === 'neon' ? 'text-cyan-300 font-extrabold drop-shadow-[0_0_6px_rgba(6,182,212,0.7)]' : isLight ? 'text-slate-600 font-bold' : 'text-slate-400 dark:text-slate-500'} mb-1 ${fontStyles.sfpHeader}`}>
                         {firstPortNum}{lastPortNum && lastPortNum !== firstPortNum ? ` - ${lastPortNum}` : ''}
                       </div>
                       <div
@@ -1509,7 +1509,7 @@ export function SwitchFaceplate({
               {/* SFP / SFP+ Uplinks Bay (adjacent to copper bays with matching height) */}
               {sfpPorts.length > 0 && (
                 <div className="flex flex-col items-center">
-                  <div className={`h-4 flex items-center justify-center uppercase tracking-widest ${isLight ? 'text-slate-600 font-bold' : 'text-slate-400 dark:text-slate-500'} mb-1 ${fontStyles.sfpHeader}`}>
+                  <div className={`h-4 flex items-center justify-center uppercase tracking-widest ${faceplateTheme === 'neon' ? 'text-cyan-300 font-extrabold drop-shadow-[0_0_6px_rgba(6,182,212,0.7)]' : isLight ? 'text-slate-600 font-bold' : 'text-slate-400 dark:text-slate-500'} mb-1 ${fontStyles.sfpHeader}`}>
                     SFP {sfpPorts[0]?.number}{sfpPorts.length > 1 ? ` - ${sfpPorts[sfpPorts.length - 1]?.number}` : ''}
                   </div>
                   <div className={`p-2 border rounded-lg flex flex-col gap-2 shrink-0 ${chassisThemeStyles.sfpBay}`}>
@@ -1589,8 +1589,8 @@ export function SwitchFaceplate({
 
               {/* Right Section: Chassis Ventilation & Airflow (Fills remaining 19" rack space) */}
               <div className="flex-1 h-32 flex items-center justify-end px-6 min-w-[80px]">
-                <div className={`flex items-center gap-6 ${isLight ? 'opacity-55 hover:opacity-85' : 'opacity-35 hover:opacity-60'} transition-opacity select-none`}>
-                  <div className={`hidden xl:flex flex-col items-center gap-0.5 text-[9px] font-mono ${isLight ? 'text-slate-600 font-bold' : 'text-slate-500'} uppercase tracking-widest`}>
+                <div className={`flex items-center gap-6 ${faceplateTheme === 'neon' ? 'opacity-80' : isLight ? 'opacity-55 hover:opacity-85' : 'opacity-35 hover:opacity-60'} transition-opacity select-none`}>
+                  <div className={`hidden xl:flex flex-col items-center gap-0.5 text-[9px] font-mono ${faceplateTheme === 'neon' ? 'text-cyan-300 font-bold drop-shadow-[0_0_6px_rgba(6,182,212,0.7)]' : isLight ? 'text-slate-600 font-bold' : 'text-slate-500'} uppercase tracking-widest`}>
                     <span>Airflow</span>
                     <span className="text-[11px] leading-none">➔➔➔</span>
                   </div>
@@ -1599,7 +1599,11 @@ export function SwitchFaceplate({
                       <div
                         key={i}
                         className={`w-1 h-14 rounded-full ${
-                          isLight ? 'bg-slate-300 border-r border-slate-400/50 shadow-inner' : 'bg-slate-800 border-r border-slate-700/60 shadow-inner'
+                          faceplateTheme === 'neon'
+                            ? 'bg-[#0d2248] border-r border-cyan-400/70 shadow-[0_0_8px_rgba(6,182,212,0.4)]'
+                            : isLight
+                            ? 'bg-slate-300 border-r border-slate-400/50 shadow-inner'
+                            : 'bg-slate-800 border-r border-slate-700/60 shadow-inner'
                         }`}
                       />
                     ))}
