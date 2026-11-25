@@ -24,7 +24,8 @@ import {
   ArrowRight,
   Sparkles,
   GitBranch,
-  Radar
+  Radar,
+  Activity
 } from 'lucide-react';
 
 export function CommandPalette({
@@ -44,6 +45,7 @@ export function CommandPalette({
   onOpenPoeModal,
   onOpenDriftRadar,
   onOpenFleetGitModal,
+  onOpenFleetTelemetry,
   onOpenIpamScanner,
   onOpenTroubleshoot,
   onToggleTheme,
@@ -117,6 +119,13 @@ export function CommandPalette({
       category: 'Действия',
       icon: GitBranch,
       action: () => onOpenFleetGitModal?.()
+    },
+    {
+      id: 'act-fleet-telemetry',
+      label: 'Живая телеметрия сети и Top Talkers (Prometheus /metrics)',
+      category: 'Действия',
+      icon: Activity,
+      action: () => onOpenFleetTelemetry?.()
     },
     {
       id: 'act-ipam-scanner',

@@ -58,6 +58,7 @@ import {
   answerCopilotQuery 
 } from './aiCopilotService.js';
 import { IpamScannerService } from './ipamScannerService.js';
+import { generatePrometheusMetrics } from './prometheusExporter.js';
 
 const ipamScannerService = new IpamScannerService(storage);
 
@@ -159,6 +160,29 @@ app.get('/api/health', (req, res) => {
     uptime: Math.floor(process.uptime()),
     timestamp: new Date().toISOString()
   });
+});
+
+// ==================== Prometheus OpenMetrics Exposition Endpoint ====================
+app.get('/metrics', (req, res) => {
+  try {
+    const switches = storage.getSwitches() || [];
+    const telemetryMap = snmpMonitorDaemon.latestTelemetryMap || new Map();
+    const metricsOutput = generatePrometheusMetrics({ switches, telemetryMap });
+    res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+    res.send(metricsOutput);
+  } catch (err) {
+    res.status(500).send(`# ERROR: ${err.message}\n`);
+  }
+});
+
+// ==================== Fleet Top Talkers & Error Matrix ====================
+app.get('/api/telemetry/top-talkers', (req, res) => {
+  try {
+    const report = snmpMonitorDaemon.getFleetTopTalkers();
+    res.json(report);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/auth/me', (req, res) => {

@@ -138,6 +138,12 @@ export function PortItem({
   const totalTrafficMbps = rxMbps + txMbps;
   const isTrafficActive = liveTelemetry && isLinkUp && (totalTrafficMbps > 0.05);
 
+  const speedMbps = port.speed === '10G' || isSfp ? 10000 : 1000;
+  const utilizationPct = liveTelemetry?.utilizationPct !== undefined
+    ? liveTelemetry.utilizationPct
+    : (speedMbps > 0 ? Math.min(100, Math.round((Math.max(rxMbps, txMbps) / speedMbps) * 1000) / 10) : 0);
+  const hasErrors = Boolean(liveTelemetry?.hasErrors || (liveTelemetry?.inErrors > 0 || liveTelemetry?.outErrors > 0 || liveTelemetry?.inDiscards > 0));
+
   // Formatted traffic label for port badge using shared utility
   const formattedTraffic = formatTrafficSpeed(totalTrafficMbps);
 
@@ -308,6 +314,37 @@ export function PortItem({
             : undefined
         }}
       >
+        {/* Live Traffic Micro-Meter Bar (Left edge gauge) */}
+        {heatmapMode === 'traffic' && isLinkUp && (
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-900/60 overflow-hidden rounded-l-xs pointer-events-none z-10">
+            <div
+              className={`w-full transition-all duration-300 ${
+                utilizationPct > 85
+                  ? 'bg-rose-500 shadow-[0_0_6px_#f43f5e] animate-pulse'
+                  : utilizationPct >= 50
+                  ? 'bg-amber-400'
+                  : 'bg-emerald-400'
+              }`}
+              style={{
+                height: `${Math.max(6, utilizationPct)}%`,
+                position: 'absolute',
+                bottom: 0
+              }}
+              title={`Загрузка: ${utilizationPct}%`}
+            />
+          </div>
+        )}
+
+        {/* Port Error Warning Flag */}
+        {hasErrors && (
+          <span
+            className="absolute -top-1 -right-1 px-1 py-0.2 rounded-xs bg-rose-600 text-[7px] font-black font-mono text-white shadow-[0_0_6px_rgba(244,63,94,0.8)] animate-pulse z-30"
+            title={`Ошибки на порту: CRC: ${liveTelemetry?.inErrors || 0}, Discards: ${liveTelemetry?.inDiscards || 0}`}
+          >
+            !CRC
+          </span>
+        )}
+
         {/* Top: Port Number & Dual Real-World LEDs (Link/Speed + PoE/Activity) */}
         <div className={`w-full flex items-center justify-between leading-none ${portNumberFont}`}>
           <span className={`font-bold ${
@@ -710,7 +747,9 @@ export function PortItem({
                   <span className="flex items-center gap-1 text-[10px] uppercase text-emerald-600 dark:text-emerald-400">
                     <Activity className="w-3 h-3 animate-pulse" /> Live Трафик (SNMP)
                   </span>
-                  <span className="text-[10px] text-slate-400">Rx/Tx</span>
+                  <span className="text-[10px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-bold">
+                    {utilizationPct}% утилизация
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Входящий (Rx):</span>
@@ -720,10 +759,16 @@ export function PortItem({
                   <span>Исходящий (Tx):</span>
                   <span className="font-bold text-blue-600 dark:text-blue-400">↑ {liveTelemetry.txMbps} Мбит/с</span>
                 </div>
-                {liveTelemetry.inErrors > 0 && (
+                {(liveTelemetry.inErrors > 0 || liveTelemetry.outErrors > 0) && (
                   <div className="flex items-center justify-between text-rose-500 font-bold text-[10px] pt-0.5 border-t border-rose-500/20">
                     <span>Ошибки пакетов (CRC):</span>
-                    <span>{liveTelemetry.inErrors} шт.</span>
+                    <span>{(liveTelemetry.inErrors || 0) + (liveTelemetry.outErrors || 0)} шт.</span>
+                  </div>
+                )}
+                {(liveTelemetry.inDiscards > 0 || liveTelemetry.outDiscards > 0) && (
+                  <div className="flex items-center justify-between text-amber-500 font-bold text-[10px] pt-0.5 border-t border-amber-500/20">
+                    <span>Сбросы (Discards):</span>
+                    <span>{(liveTelemetry.inDiscards || 0) + (liveTelemetry.outDiscards || 0)} шт.</span>
                   </div>
                 )}
               </div>

@@ -10,7 +10,24 @@
 import http from 'http';
 import https from 'https';
 import dgram from 'dgram';
-import { pollSwitchTelemetry } from './snmpPoller.js';
+import { pollSwitchTelemetry, calculateUtilizationPct, generateFallbackTelemetry } from './snmpPoller.js';
+
+async function mapConcurrent(items, limit, fn) {
+  const results = [];
+  const executing = [];
+  for (const item of items) {
+    const p = Promise.resolve().then(() => fn(item));
+    results.push(p);
+    if (limit <= items.length) {
+      const e = p.then(() => executing.splice(executing.indexOf(e), 1));
+      executing.push(e);
+      if (executing.length >= limit) {
+        await Promise.race(executing);
+      }
+    }
+  }
+  return Promise.all(results);
+}
 
 class SnmpMonitorDaemon {
   constructor() {
@@ -22,6 +39,8 @@ class SnmpMonitorDaemon {
     this.previousPortState = new Map();
     // switchId -> boolean (online status)
     this.previousSwitchOnline = new Map();
+    // switchId -> latest full telemetry snapshot
+    this.latestTelemetryMap = new Map();
   }
 
   init(storage) {
@@ -59,11 +78,15 @@ class SnmpMonitorDaemon {
     const switches = this.storage.getSwitches() || [];
     const notifSettings = this.storage.getNotificationSettings();
 
-    for (const sw of switches) {
+    await mapConcurrent(switches, 6, async (sw) => {
       try {
         const telemetry = await pollSwitchTelemetry(sw);
         const isOnline = Boolean(telemetry && telemetry.online !== false);
         const prevOnline = this.previousSwitchOnline.get(sw.id);
+
+        if (telemetry) {
+          this.latestTelemetryMap.set(sw.id, telemetry);
+        }
 
         if (prevOnline !== undefined) {
           if (prevOnline === true && !isOnline && notifSettings.alertOnSwitchDown !== false) {
@@ -90,7 +113,7 @@ class SnmpMonitorDaemon {
         }
         this.previousSwitchOnline.set(sw.id, isOnline);
 
-        if (!isOnline || !telemetry || !telemetry.ports) continue;
+        if (!isOnline || !telemetry || !telemetry.ports) return;
 
         const prevSwState = this.previousPortState.get(sw.id) || {};
         const newSwState = {};
@@ -171,7 +194,98 @@ class SnmpMonitorDaemon {
       } catch (e) {
         // Ошибка опроса конкретного свитча не должна прерывать цикл
       }
+    });
+  }
+
+  /**
+   * Aggregate real-time fleet bandwidth, Top-5 loaded interfaces and Top-5 error interfaces
+   */
+  getFleetTopTalkers() {
+    const switches = this.storage?.getSwitches() || [];
+    let totalIngressMbps = 0;
+    let totalEgressMbps = 0;
+    let totalActivePorts = 0;
+    let totalPortsCount = 0;
+    const allPorts = [];
+
+    for (const sw of switches) {
+      let telemetry = this.latestTelemetryMap.get(sw.id);
+      // Fallback: if daemon has no live telemetry ports yet, generate simulated view for display
+      if ((!telemetry || !telemetry.ports) && sw.ports) {
+        telemetry = generateFallbackTelemetry(sw, false, 'Демонстрационная телеметрия (Lab mode)');
+      }
+
+      const swPorts = telemetry?.ports || [];
+      const configuredMap = new Map((sw.ports || []).map(p => [p.number, p]));
+
+      totalPortsCount += (sw.ports || []).length;
+
+      for (const p of swPorts) {
+        const cfg = configuredMap.get(p.number) || {};
+        const rx = Number(p.rxMbps) || 0;
+        const tx = Number(p.txMbps) || 0;
+        const speed = Number(p.speedMbps) || (cfg.speed === '10G' ? 10000 : 1000);
+        const inErrors = Number(p.inErrors) || 0;
+        const outErrors = Number(p.outErrors) || 0;
+        const inDiscards = Number(p.inDiscards) || 0;
+        const outDiscards = Number(p.outDiscards) || 0;
+        const totalErr = inErrors + outErrors + inDiscards + outDiscards;
+
+        if (p.operStatus === 'up') {
+          totalActivePorts++;
+          totalIngressMbps += rx;
+          totalEgressMbps += tx;
+        }
+
+        allPorts.push({
+          switchId: sw.id,
+          switchName: sw.name,
+          switchModel: sw.model,
+          portNumber: p.number,
+          portName: p.name || cfg.name || `port${p.number}`,
+          vlanId: cfg.vlanId || cfg.pvid || '1',
+          connectedTo: cfg.connectedTo || cfg.comment || '',
+          operStatus: p.operStatus || 'down',
+          speedMbps: speed,
+          rxMbps: Math.round(rx * 100) / 100,
+          txMbps: Math.round(tx * 100) / 100,
+          peakMbps: Math.max(rx, tx),
+          utilizationPct: p.utilizationPct !== undefined ? p.utilizationPct : calculateUtilizationPct(rx, tx, speed),
+          inErrors,
+          outErrors,
+          inDiscards,
+          outDiscards,
+          totalErrors: totalErr,
+          recentErrors: p.recentErrors || 0
+        });
+      }
     }
+
+    // Top 5 loaded ports
+    const topTalkers = [...allPorts]
+      .filter(p => p.operStatus === 'up' || p.peakMbps > 0)
+      .sort((a, b) => b.peakMbps - a.peakMbps)
+      .slice(0, 5);
+
+    // Top 5 error/discard ports
+    const topErrors = [...allPorts]
+      .filter(p => p.totalErrors > 0)
+      .sort((a, b) => b.totalErrors - a.totalErrors)
+      .slice(0, 5);
+
+    return {
+      timestamp: new Date().toISOString(),
+      summary: {
+        totalIngressMbps: Math.round(totalIngressMbps * 10) / 10,
+        totalEgressMbps: Math.round(totalEgressMbps * 10) / 10,
+        totalBandwidthGbps: Math.round(((totalIngressMbps + totalEgressMbps) / 1000) * 100) / 100,
+        totalActivePorts,
+        totalPortsCount,
+        errorPortsCount: allPorts.filter(p => p.totalErrors > 0).length
+      },
+      topTalkers,
+      topErrors
+    };
   }
 
   /**

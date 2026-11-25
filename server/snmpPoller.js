@@ -5,35 +5,109 @@ import { pingHost } from './diagnostics.js';
 // switchId -> { timestamp, ports: { [portNum]: { inOctets, outOctets, inErrors, outErrors } } }
 const pollCache = new Map();
 
+// Persistent monotonic counter storage for simulated devices
+// switchId -> { timestamp, ports: { [portNum]: { inOctets, outOctets, inErrors, outErrors, inDiscards, outDiscards } } }
+const simulatedCounters = new Map();
+
 export function clearPollCache(switchId) {
   if (switchId) {
     pollCache.delete(switchId);
+    simulatedCounters.delete(switchId);
   } else {
     pollCache.clear();
+    simulatedCounters.clear();
   }
 }
 
+/**
+ * Safely parse SNMP 64-bit counter (Counter64) from Buffer or Number to BigInt
+ */
+export function parseCounter64(val) {
+  if (val === null || val === undefined) return 0n;
+  if (typeof val === 'bigint') return val;
+  if (Buffer.isBuffer(val)) {
+    if (val.length >= 8) {
+      return val.readBigUInt64BE(0);
+    }
+    try {
+      const hex = val.toString('hex');
+      return hex ? BigInt('0x' + hex) : 0n;
+    } catch {
+      return 0n;
+    }
+  }
+  if (typeof val === 'number') {
+    return BigInt(Math.max(0, Math.floor(val)));
+  }
+  if (typeof val === 'string') {
+    try {
+      return BigInt(val.trim() || '0');
+    } catch {
+      return 0n;
+    }
+  }
+  return 0n;
+}
+
+/**
+ * Calculate counter delta with 32-bit rollover support and 64-bit reset detection
+ */
+export function calculateCounterDelta(curr, prev, bits = 64) {
+  const c = typeof curr === 'bigint' ? curr : parseCounter64(curr);
+  const p = typeof prev === 'bigint' ? prev : parseCounter64(prev);
+
+  if (c >= p) {
+    return c - p;
+  }
+
+  // Counter wrapped or was reset
+  if (bits === 32) {
+    // 32-bit rollover: (2^32 - prev) + curr
+    const max32 = 4294967296n; // 2^32
+    return (max32 - p) + c;
+  }
+
+  // 64-bit drop indicates device reboot or counter clear -> discard delta
+  return 0n;
+}
+
+/**
+ * Calculate full-duplex utilization percentage safely without division by zero
+ */
+export function calculateUtilizationPct(rxMbps, txMbps, speedMbps) {
+  if (!speedMbps || speedMbps <= 0) return 0;
+  const peak = Math.max(Number(rxMbps) || 0, Number(txMbps) || 0);
+  const pct = (peak / speedMbps) * 100;
+  return Math.min(100, Math.max(0, Math.round(pct * 10) / 10));
+}
+
 // Standard IF-MIB OIDs (RFC 2863)
-const OIDS = {
+export const OIDS = {
   // System MIB
   sysDescr: '1.3.6.1.2.1.1.1.0',
   sysUpTime: '1.3.6.1.2.1.1.3.0',
   sysName: '1.3.6.1.2.1.1.5.0',
 
-  // IF-MIB table column roots
+  // IF-MIB table column roots (ifTable 1.3.6.1.2.1.2.2.1)
   ifDescr: '1.3.6.1.2.1.2.2.1.2',
   ifType: '1.3.6.1.2.1.2.2.1.3',
   ifSpeed: '1.3.6.1.2.1.2.2.1.5',
   ifPhysAddress: '1.3.6.1.2.1.2.2.1.6',
   ifOperStatus: '1.3.6.1.2.1.2.2.1.8', // 1=up, 2=down, 3=testing, 4=unknown, 5=dormant, 6=notPresent, 7=lowerLayerDown
   ifInOctets: '1.3.6.1.2.1.2.2.1.10',
+  ifInUcastPkts: '1.3.6.1.2.1.2.2.1.11',
+  ifInDiscards: '1.3.6.1.2.1.2.2.1.13',
   ifInErrors: '1.3.6.1.2.1.2.2.1.14',
   ifOutOctets: '1.3.6.1.2.1.2.2.1.16',
+  ifOutUcastPkts: '1.3.6.1.2.1.2.2.1.17',
+  ifOutDiscards: '1.3.6.1.2.1.2.2.1.19',
   ifOutErrors: '1.3.6.1.2.1.2.2.1.20',
 
-  // IF-MIB 64-bit HC counters (for Gigabit and 10G)
+  // IF-MIB 64-bit HC counters (ifXTable 1.3.6.1.2.1.31.1.1.1)
   ifHCInOctets: '1.3.6.1.2.1.31.1.1.1.6',
+  ifHCInUcastPkts: '1.3.6.1.2.1.31.1.1.1.7',
   ifHCOutOctets: '1.3.6.1.2.1.31.1.1.1.10',
+  ifHCOutUcastPkts: '1.3.6.1.2.1.31.1.1.1.11',
   ifHighSpeed: '1.3.6.1.2.1.31.1.1.1.15', // in Mbps
   ifAlias: '1.3.6.1.2.1.31.1.1.1.18', // Port description configured on switch
 
@@ -93,7 +167,18 @@ export async function pollSwitchTelemetry(switchData) {
         timestamp: new Date().toISOString()
       };
     }
-    return generateFallbackTelemetry(switchData, false, 'Коммутатор не отвечает на ICMP Ping');
+    if (snmpMode === 'simulation') {
+      return generateFallbackTelemetry(switchData, false, 'Коммутатор не отвечает на ICMP Ping (Режим симуляции)');
+    }
+    // Auto mode: accurately mark device as offline, but provide fallback port metrics so faceplate visualizer displays link activity
+    const fallback = generateFallbackTelemetry(switchData, false, `Коммутатор ${ip} недоступен по Ping (отображаются демо-метрики)`);
+    return {
+      ...fallback,
+      success: false,
+      online: false,
+      source: 'offline-lab',
+      error: `Коммутатор ${ip} не отвечает на ICMP Ping`
+    };
   }
 
   const isV3 = String(switchData.snmpVersion) === '3';
@@ -349,11 +434,20 @@ function calculateTrafficDeltas(switchId, currentPorts) {
 /**
  * Generate intelligent simulated telemetry when switch is offline or in lab environment
  */
-function generateFallbackTelemetry(switchData, isReachablePing, reasonMsg) {
+export function generateFallbackTelemetry(switchData, isReachablePing, reasonMsg) {
   const configuredPorts = switchData.ports || [];
   let poeWattsUsed = 0;
   let totalInMbps = 0;
   let totalOutMbps = 0;
+  const now = Date.now();
+
+  let switchSim = simulatedCounters.get(switchData.id);
+  if (!switchSim) {
+    switchSim = { timestamp: now, ports: {} };
+    simulatedCounters.set(switchData.id, switchSim);
+  }
+  const timeElapsedSec = Math.max(1, Math.min(60, (now - switchSim.timestamp) / 1000));
+  switchSim.timestamp = now;
 
   const ports = configuredPorts.map((p, idx) => {
     const portNum = p.number || (idx + 1);
@@ -362,14 +456,34 @@ function generateFallbackTelemetry(switchData, isReachablePing, reasonMsg) {
     
     let rxMbps = 0;
     let txMbps = 0;
-    let inErrors = 0;
+    const isHighSpeed = p.speed === '10G' || p.type === 'sfp';
+    const speedMbps = isHighSpeed ? 10000 : 1000;
+
+    let portSim = switchSim.ports[portNum];
+    if (!portSim) {
+      portSim = {
+        inOctets: BigInt(Math.floor(Math.random() * 500000000) + 10000000),
+        outOctets: BigInt(Math.floor(Math.random() * 300000000) + 5000000),
+        inErrors: portNum === 24 ? 3n : 0n,
+        outErrors: 0n,
+        inDiscards: 0n,
+        outDiscards: 0n
+      };
+      switchSim.ports[portNum] = portSim;
+    }
+
     if (isUp) {
-      const isHighSpeed = p.speed === '10G' || p.type === 'sfp';
       rxMbps = Math.round((Math.random() * (isHighSpeed ? 140 : 35) + 1.5) * 10) / 10;
       txMbps = Math.round((Math.random() * (isHighSpeed ? 95 : 18) + 0.8) * 10) / 10;
-      // Simulated occasional CRC error on port 24 or flagged ports
-      if (portNum === 24) {
-        inErrors = Math.floor(Math.random() * 4);
+
+      // Monotonically advance cumulative counters based on simulated bandwidth
+      const deltaInBytes = BigInt(Math.floor((rxMbps * 1000000 / 8) * timeElapsedSec));
+      const deltaOutBytes = BigInt(Math.floor((txMbps * 1000000 / 8) * timeElapsedSec));
+      portSim.inOctets += deltaInBytes;
+      portSim.outOctets += deltaOutBytes;
+
+      if (portNum === 24 && Math.random() < 0.05) {
+        portSim.inErrors += 1n;
       }
     }
 
@@ -380,18 +494,28 @@ function generateFallbackTelemetry(switchData, isReachablePing, reasonMsg) {
     totalInMbps += rxMbps;
     totalOutMbps += txMbps;
 
+    const inErrorsNum = Number(portSim.inErrors);
+    const outErrorsNum = Number(portSim.outErrors);
+    const inDiscardsNum = Number(portSim.inDiscards);
+    const outDiscardsNum = Number(portSim.outDiscards);
+
     return {
       portId: p.id,
       number: portNum,
       name: p.name || `ether${portNum}`,
       operStatus: isUp ? 'up' : 'down',
-      speedMbps: p.speed === '10G' || p.type === 'sfp' ? 10000 : 1000,
+      speedMbps,
       rxMbps,
       txMbps,
-      inErrors,
-      outErrors: 0,
-      recentErrors: inErrors,
-      hasErrors: inErrors > 0,
+      utilizationPct: calculateUtilizationPct(rxMbps, txMbps, speedMbps),
+      inOctets: Number(portSim.inOctets),
+      outOctets: Number(portSim.outOctets),
+      inErrors: inErrorsNum,
+      outErrors: outErrorsNum,
+      inDiscards: inDiscardsNum,
+      outDiscards: outDiscardsNum,
+      recentErrors: 0,
+      hasErrors: (inErrorsNum + outErrorsNum) > 0,
       poe: p.poe,
       poeWatts: isUp && p.poe ? (p.poeWatts || 14.2) : 0
     };
@@ -399,7 +523,7 @@ function generateFallbackTelemetry(switchData, isReachablePing, reasonMsg) {
 
   return {
     success: true,
-    online: true,
+    online: isReachablePing,
     source: isReachablePing ? 'simulation-reachable' : 'simulation-lab',
     switchId: switchData.id,
     switchName: switchData.name,

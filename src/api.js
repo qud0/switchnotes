@@ -1683,5 +1683,14 @@ export const api = {
       throw new Error(err.error || 'Ошибка применения исправления AI');
     }
     return res.json();
+  },
+
+  getFleetTopTalkers: async () => {
+    const res = await fetch(`${API_BASE}/telemetry/top-talkers`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка загрузки телеметрии Top Talkers');
+    }
+    return res.json();
   }
 };

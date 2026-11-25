@@ -53,6 +53,7 @@ const ConfigTemplateModal = lazy(() => import('./components/ConfigTemplateModal'
 const VlanBlastRadiusModal = lazy(() => import('./components/VlanBlastRadiusModal'));
 const ConfigDriftRadarModal = lazy(() => import('./components/ConfigDriftRadarModal').then(m => ({ default: m.ConfigDriftRadarModal })));
 const FleetGitBackupModal = lazy(() => import('./components/FleetGitBackupModal').then(m => ({ default: m.FleetGitBackupModal })));
+const FleetTelemetryModal = lazy(() => import('./components/FleetTelemetryModal').then(m => ({ default: m.FleetTelemetryModal })));
 const IpamScannerModal = lazy(() => import('./components/IpamScannerModal').then(m => ({ default: m.IpamScannerModal })));
 import LoginModal from './components/LoginModal';
 import UsersModal from './components/UsersModal';
@@ -180,6 +181,7 @@ export default function App() {
   const [blastRadiusSwitchId, setBlastRadiusSwitchId] = useState('');
   const [isDriftRadarOpen, setIsDriftRadarOpen] = useState(false);
   const [isFleetGitModalOpen, setIsFleetGitModalOpen] = useState(false);
+  const [isFleetTelemetryModalOpen, setIsFleetTelemetryModalOpen] = useState(false);
   const [isIpamScannerModalOpen, setIsIpamScannerModalOpen] = useState(false);
   const [scannerSubnetContext, setScannerSubnetContext] = useState({ subnet: '192.168.10.0/24', vlanId: 1 });
 
@@ -948,6 +950,7 @@ export default function App() {
         }}
         onOpenDriftRadar={() => setIsDriftRadarOpen(true)}
         onOpenFleetGitModal={() => setIsFleetGitModalOpen(true)}
+        onOpenFleetTelemetry={() => setIsFleetTelemetryModalOpen(true)}
         unreadAlertsCount={unreadAlertsCount}
         auditIssuesCount={auditSummary.counts.total}
         auditHealthScore={auditSummary.healthScore}
@@ -1729,6 +1732,13 @@ export default function App() {
           theme={theme}
         />
 
+        {/* Fleet Network Live Telemetry & Top Talkers Modal */}
+        <FleetTelemetryModal
+          isOpen={isFleetTelemetryModalOpen}
+          onClose={() => setIsFleetTelemetryModalOpen(false)}
+          theme={theme}
+        />
+
         {/* IPAM Subnet Live Scanner & Drift Audit Modal */}
         <IpamScannerModal
           isOpen={isIpamScannerModalOpen}
@@ -1764,6 +1774,7 @@ export default function App() {
         onOpenDiscoveryModal={() => setIsDiscoveryModalOpen(true)}
         onOpenDriftRadar={() => setIsDriftRadarOpen(true)}
         onOpenFleetGitModal={() => setIsFleetGitModalOpen(true)}
+        onOpenFleetTelemetry={() => setIsFleetTelemetryModalOpen(true)}
         onOpenIpamScanner={() => handleOpenIpamScanner()}
         onOpenPoeModal={(swId) => {
           setPoeModalSwitchId(swId || selectedSwitchId || switches[0]?.id);

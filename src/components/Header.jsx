@@ -64,6 +64,7 @@ export function Header({
   onOpenWebSerial,
   onOpenDriftRadar,
   onOpenFleetGitModal,
+  onOpenFleetTelemetry,
   unreadAlertsCount = 0,
   auditIssuesCount = 0,
   auditHealthScore = 100,
@@ -506,6 +507,25 @@ export function Header({
                           <span className="text-[9px] px-1 py-0.2 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 font-mono">Git Auto</span>
                         </div>
                         <div className="text-[10px] text-slate-400">Сбор running-config, коммиты, Diff и выгрузка ZIP</div>
+                      </div>
+                    </button>
+                  )}
+
+                  {/* Fleet Live Telemetry & Top Talkers */}
+                  {onOpenFleetTelemetry && (
+                    <button
+                      onClick={() => { onOpenFleetTelemetry(); setToolsMenuOpen(false); }}
+                      className={`w-full px-2.5 py-2 rounded-xl text-left flex items-center gap-2 transition cursor-pointer ${
+                        isLight ? 'hover:bg-slate-100' : 'hover:bg-slate-800'
+                      }`}
+                    >
+                      <Activity className="w-4 h-4 text-emerald-500 shrink-0 animate-pulse" />
+                      <div>
+                        <div className="font-semibold flex items-center gap-1.5">
+                          Телеметрия сети (Top Talkers)
+                          <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">Prometheus</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400">Live трафик, CRC-ошибки и Prometheus /metrics</div>
                       </div>
                     </button>
                   )}
@@ -981,6 +1001,15 @@ export function Header({
                     >
                       <GitBranch className="w-4 h-4 text-blue-500 shrink-0" />
                       <span>Центр Git-бэкапов флота</span>
+                    </button>
+                  )}
+                  {onOpenFleetTelemetry && (
+                    <button
+                      onClick={() => { onOpenFleetTelemetry(); setMobileMoreOpen(false); }}
+                      className="w-full px-2.5 py-2 rounded-xl text-left flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                    >
+                      <Activity className="w-4 h-4 text-emerald-500 shrink-0 animate-pulse" />
+                      <span>Телеметрия сети (Top Talkers)</span>
                     </button>
                   )}
                   {onOpenConfigTemplatesModal && (
