@@ -366,6 +366,46 @@ export const api = {
     return res.json();
   },
 
+  scanIpamSubnet: async (params, signal) => {
+    const res = await fetch(`${API_BASE}/ipam/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+      signal
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка сканирования подсети');
+    }
+    return res.json();
+  },
+
+  batchImportDiscoveredHosts: async (items, options = {}) => {
+    const res = await fetch(`${API_BASE}/ipam/scan/batch-import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items, options })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка пакетного импорта хостов в IPAM');
+    }
+    return res.json();
+  },
+
+  batchReleaseZombieIps: async (ids, options = {}) => {
+    const res = await fetch(`${API_BASE}/ipam/scan/batch-release`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, options })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка пакетного освобождения IP');
+    }
+    return res.json();
+  },
+
   // Floor Plans
   getFloorPlans: async () => {
     const res = await fetch(`${API_BASE}/floor-plans`);

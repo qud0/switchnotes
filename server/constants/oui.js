@@ -39,10 +39,22 @@ export const OUI_DATABASE = [
   { prefix: '00:1E:67', vendor: 'Intel', type: 'NIC / Server' },
   { prefix: 'F8:75:A4', vendor: 'Intel', type: 'NIC / Server' },
 
-  // Virtualization
+  // Virtualization & Containers
   { prefix: '00:50:56', vendor: 'VMware ESXi', type: 'Virtual Machine' },
   { prefix: '00:0C:29', vendor: 'VMware Workstation', type: 'Virtual Machine' },
   { prefix: '52:54:00', vendor: 'QEMU / KVM', type: 'Virtual Machine' },
+  { prefix: 'BC:24:11', vendor: 'Proxmox / QEMU', type: 'Virtual Machine' },
+
+  // Hardware Vendors (Servers, PCs, Network Adapters)
+  { prefix: '00:E0:4C', vendor: 'Realtek Semiconductor', type: 'Network Adapter' },
+  { prefix: '00:07:0B', vendor: 'Realtek Semiconductor', type: 'Network Adapter' },
+  { prefix: 'AC:DE:48', vendor: 'Apple Inc.', type: 'Workstation / Mobile' },
+  { prefix: 'F0:18:98', vendor: 'Apple Inc.', type: 'Workstation / Mobile' },
+  { prefix: 'BC:92:6B', vendor: 'Apple Inc.', type: 'Workstation / Mobile' },
+  { prefix: '00:25:90', vendor: 'Supermicro', type: 'Enterprise Server' },
+  { prefix: '00:30:48', vendor: 'Supermicro', type: 'Enterprise Server' },
+  { prefix: '50:D4:F7', vendor: 'TP-Link', type: 'Network Device' },
+  { prefix: '00:E0:FC', vendor: 'Huawei', type: 'Switch / Router' },
 
   // VoIP & Peripherals
   { prefix: '00:1A:E8', vendor: 'Grandstream VoIP', type: 'VoIP Phone' },

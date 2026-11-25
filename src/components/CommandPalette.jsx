@@ -23,7 +23,8 @@ import {
   Tag,
   ArrowRight,
   Sparkles,
-  GitBranch
+  GitBranch,
+  Radar
 } from 'lucide-react';
 
 export function CommandPalette({
@@ -43,6 +44,7 @@ export function CommandPalette({
   onOpenPoeModal,
   onOpenDriftRadar,
   onOpenFleetGitModal,
+  onOpenIpamScanner,
   onOpenTroubleshoot,
   onToggleTheme,
   theme = 'dark'
@@ -115,6 +117,13 @@ export function CommandPalette({
       category: 'Действия',
       icon: GitBranch,
       action: () => onOpenFleetGitModal?.()
+    },
+    {
+      id: 'act-ipam-scanner',
+      label: 'Сетевой сканер подсетей IPAM (ICMP & ARP опрос)',
+      category: 'Действия',
+      icon: Radar,
+      action: () => onOpenIpamScanner?.()
     },
     {
       id: 'act-poe',

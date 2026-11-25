@@ -57,6 +57,9 @@ import {
   diagnosePortIncident, 
   answerCopilotQuery 
 } from './aiCopilotService.js';
+import { IpamScannerService } from './ipamScannerService.js';
+
+const ipamScannerService = new IpamScannerService(storage);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1070,6 +1073,51 @@ app.post('/api/ipam/sync-servers', requireRole('engineer'), (req, res) => {
   try {
     const result = storage.syncServersToIpam();
     res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- IPAM SUBNET LIVE SCANNER & DRIFT AUDIT ---
+
+// Scan subnet via ICMP & ARP probe with drift classification
+app.post('/api/ipam/scan', requireRole('engineer'), async (req, res) => {
+  const ac = new AbortController();
+  req.on('close', () => {
+    if (!res.writableEnded) {
+      ac.abort();
+    }
+  });
+
+  try {
+    const result = await ipamScannerService.scanSubnet(req.body, ac.signal);
+    res.json(result);
+  } catch (err) {
+    if (ac.signal.aborted) {
+      return res.status(499).json({ error: 'Сканирование прервано пользователем' });
+    }
+    const statusCode = err.message?.includes('слишком велик') || err.message?.includes('Некорректный CIDR') ? 400 : 500;
+    res.status(statusCode).json({ error: err.message });
+  }
+});
+
+// Batch import discovered hosts into IPAM
+app.post('/api/ipam/scan/batch-import', requireRole('engineer'), (req, res) => {
+  try {
+    const { items = [], options = {} } = req.body;
+    const result = storage.batchImportIpAllocations(items, options);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Batch release zombie IP allocations from IPAM
+app.post('/api/ipam/scan/batch-release', requireRole('admin'), (req, res) => {
+  try {
+    const { ids = [], options = {} } = req.body;
+    const result = storage.batchReleaseIpAllocations(ids, options);
+    res.json({ success: true, ...result });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

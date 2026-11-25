@@ -19,7 +19,8 @@ import {
   Zap,
   Tag,
   Users,
-  Scissors
+  Scissors,
+  Radar
 } from 'lucide-react';
 import { parseSubnet, isIpInDhcpRange, longToIp, ipToLong } from '../utils/ipamUtils';
 import { downloadCsv } from '../utils/exportUtils';
@@ -54,6 +55,7 @@ export function IpamView({
   onReloadIpam,
   onSelectServer,
   onOpenAdModal,
+  onOpenSubnetScanner,
   theme = 'dark'
 }) {
   const openCreateModal = onOpenCreateIpModal || onAddIp;
@@ -475,6 +477,15 @@ export function IpamView({
                   >
                     <Download className="w-3.5 h-3.5 text-emerald-500" />
                     <span className="hidden sm:inline">Excel</span>
+                  </button>
+
+                  <button
+                    onClick={() => onOpenSubnetScanner?.(selectedVlan?.subnet, selectedVlan?.id)}
+                    className="flex items-center gap-1.5 px-3.5 h-9 rounded-xl bg-purple-600/10 hover:bg-purple-600 text-purple-600 hover:text-white dark:text-purple-400 dark:hover:text-white border border-purple-500/30 text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                    title="Сканировать подсеть через параллельный ICMP/ARP опрос"
+                  >
+                    <Radar className="w-4 h-4" />
+                    <span>Сканер подсети</span>
                   </button>
 
                   <button

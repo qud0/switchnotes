@@ -1559,6 +1559,15 @@ export class Storage {
     return this.getIpAllocations().find(i => i.id === id);
   }
 
+  normalizeMac(mac) {
+    if (!mac || typeof mac !== 'string') return '';
+    const clean = mac.replace(/[^a-fA-F0-9]/g, '').toUpperCase();
+    if (clean.length === 12) {
+      return clean.match(/.{1,2}/g).join(':');
+    }
+    return mac.trim().toUpperCase();
+  }
+
   createIpAllocation(ipData) {
     const ip = (ipData.ip || '').trim();
     if (!ip) throw new Error('IP-адрес обязателен для заполнения');
@@ -1571,11 +1580,11 @@ export class Storage {
 
     const newAllocation = {
       ...ipData,
-      id: ipData.id || `ip-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: ipData.id || crypto.randomUUID(),
       ip: ip,
       vlanId: vlanId,
       hostname: (ipData.hostname || '').trim(),
-      mac: (ipData.mac || '').trim().toUpperCase(),
+      mac: this.normalizeMac(ipData.mac),
       type: ipData.type || 'workstation',
       status: ipData.status || 'active',
       location: (ipData.location || '').trim(),
@@ -1601,6 +1610,105 @@ export class Storage {
 
     this.save();
     return newAllocation;
+  }
+
+  batchImportIpAllocations(items = [], options = {}) {
+    const allocations = this.getIpAllocations();
+    const updateExisting = options.updateExisting !== false;
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    const errors = [];
+
+    items.forEach((item, index) => {
+      try {
+        const ip = (item.ip || '').trim();
+        if (!ip) throw new Error(`Элемент #${index}: IP-адрес обязателен`);
+        const vlanId = parseInt(item.vlanId) || 1;
+        const normMac = this.normalizeMac(item.mac);
+
+        const existingIdx = allocations.findIndex(i => i.ip === ip && i.vlanId === vlanId);
+        if (existingIdx !== -1) {
+          if (updateExisting) {
+            allocations[existingIdx] = {
+              ...allocations[existingIdx],
+              hostname: item.hostname ? item.hostname.trim() : allocations[existingIdx].hostname,
+              mac: normMac || allocations[existingIdx].mac,
+              type: item.type || allocations[existingIdx].type,
+              status: item.status || allocations[existingIdx].status,
+              location: item.location !== undefined ? item.location.trim() : allocations[existingIdx].location,
+              description: item.description !== undefined ? item.description.trim() : allocations[existingIdx].description,
+              updatedAt: new Date().toISOString()
+            };
+            updated++;
+          } else {
+            skipped++;
+          }
+        } else {
+          const newAlloc = {
+            id: item.id || crypto.randomUUID(),
+            ip,
+            vlanId,
+            hostname: (item.hostname || '').trim(),
+            mac: normMac,
+            type: item.type || options.defaultType || 'workstation',
+            status: item.status || 'active',
+            location: (item.location || '').trim(),
+            connectedTo: (item.connectedTo || '').trim(),
+            description: (item.description || '').trim(),
+            updatedAt: new Date().toISOString()
+          };
+          allocations.push(newAlloc);
+          created++;
+        }
+      } catch (err) {
+        errors.push({ item, error: err.message });
+      }
+    });
+
+    // Sort IP allocations logically
+    this.data.ipam.sort((a, b) => {
+      const aParts = (a.ip || '').split('.').map(Number);
+      const bParts = (b.ip || '').split('.').map(Number);
+      for (let i = 0; i < 4; i++) {
+        if ((aParts[i] || 0) !== (bParts[i] || 0)) {
+          return (aParts[i] || 0) - (bParts[i] || 0);
+        }
+      }
+      return 0;
+    });
+
+    this.logAction({
+      entity: 'ipam',
+      action: 'batch_import',
+      title: 'Пакетный импорт хостов в IPAM',
+      details: `Создано: ${created}, обновлено: ${updated}, пропущено: ${skipped}${errors.length ? `, ошибок: ${errors.length}` : ''}`
+    });
+
+    this.save();
+    return { created, updated, skipped, errors, total: allocations.length };
+  }
+
+  batchReleaseIpAllocations(ids = [], options = {}) {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return { released: 0, notFound: 0, total: this.getIpAllocations().length };
+    }
+    const idSet = new Set(ids);
+    const allocations = this.getIpAllocations();
+    const initialLen = allocations.length;
+    this.data.ipam = allocations.filter(i => !idSet.has(i.id));
+    const released = initialLen - this.data.ipam.length;
+    const notFound = ids.length - released;
+
+    this.logAction({
+      entity: 'ipam',
+      action: 'batch_release',
+      title: 'Пакетное освобождение IP-адресов (удаление зомби-записей)',
+      details: `Удалено: ${released} записей из ${ids.length}`
+    });
+
+    this.save();
+    return { released, notFound, total: this.data.ipam.length };
   }
 
   updateIpAllocation(id, updateData) {

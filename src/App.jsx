@@ -53,6 +53,7 @@ const ConfigTemplateModal = lazy(() => import('./components/ConfigTemplateModal'
 const VlanBlastRadiusModal = lazy(() => import('./components/VlanBlastRadiusModal'));
 const ConfigDriftRadarModal = lazy(() => import('./components/ConfigDriftRadarModal').then(m => ({ default: m.ConfigDriftRadarModal })));
 const FleetGitBackupModal = lazy(() => import('./components/FleetGitBackupModal').then(m => ({ default: m.FleetGitBackupModal })));
+const IpamScannerModal = lazy(() => import('./components/IpamScannerModal').then(m => ({ default: m.IpamScannerModal })));
 import LoginModal from './components/LoginModal';
 import UsersModal from './components/UsersModal';
 import { useToast } from './context/ToastContext';
@@ -179,6 +180,16 @@ export default function App() {
   const [blastRadiusSwitchId, setBlastRadiusSwitchId] = useState('');
   const [isDriftRadarOpen, setIsDriftRadarOpen] = useState(false);
   const [isFleetGitModalOpen, setIsFleetGitModalOpen] = useState(false);
+  const [isIpamScannerModalOpen, setIsIpamScannerModalOpen] = useState(false);
+  const [scannerSubnetContext, setScannerSubnetContext] = useState({ subnet: '192.168.10.0/24', vlanId: 1 });
+
+  const handleOpenIpamScanner = (subnet, vlanId) => {
+    setScannerSubnetContext({
+      subnet: subnet || vlans[0]?.subnet || '192.168.10.0/24',
+      vlanId: vlanId || vlans[0]?.id || 1
+    });
+    setIsIpamScannerModalOpen(true);
+  };
 
   // Zoom scale state: 70% to 150%
   const [zoomLevel, setZoomLevel] = useState(() => {
@@ -1036,6 +1047,7 @@ export default function App() {
             }}
             onReloadData={fetchData}
             onOpenAdModal={() => setIsAdModalOpen(true)}
+            onOpenSubnetScanner={handleOpenIpamScanner}
             theme={theme}
           />
         ) : currentView === 'topology' ? (
@@ -1083,6 +1095,7 @@ export default function App() {
               setCurrentView('servers');
             }}
             onOpenAdModal={() => setIsAdModalOpen(true)}
+            onOpenSubnetScanner={handleOpenIpamScanner}
             theme={theme}
           />
         ) : currentView === 'campus' ? (
@@ -1715,6 +1728,17 @@ export default function App() {
           onClose={() => setIsFleetGitModalOpen(false)}
           theme={theme}
         />
+
+        {/* IPAM Subnet Live Scanner & Drift Audit Modal */}
+        <IpamScannerModal
+          isOpen={isIpamScannerModalOpen}
+          onClose={() => setIsIpamScannerModalOpen(false)}
+          initialSubnet={scannerSubnetContext.subnet}
+          initialVlanId={scannerSubnetContext.vlanId}
+          vlans={vlans}
+          onRefreshIpam={fetchData}
+          theme={theme}
+        />
       </Suspense>
 
       {/* Global Command Palette (Ctrl+K / Cmd+K) */}
@@ -1740,6 +1764,7 @@ export default function App() {
         onOpenDiscoveryModal={() => setIsDiscoveryModalOpen(true)}
         onOpenDriftRadar={() => setIsDriftRadarOpen(true)}
         onOpenFleetGitModal={() => setIsFleetGitModalOpen(true)}
+        onOpenIpamScanner={() => handleOpenIpamScanner()}
         onOpenPoeModal={(swId) => {
           setPoeModalSwitchId(swId || selectedSwitchId || switches[0]?.id);
           setIsPoeModalOpen(true);
