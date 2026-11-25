@@ -151,6 +151,16 @@ app.post('/api/auth/login', (req, res) => {
   }
 });
 
+// ==================== Health & Readiness Endpoint ====================
+app.get('/api/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'switchbook',
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.get('/api/auth/me', (req, res) => {
   if (!req.user) {
     return res.status(401).json({ authenticated: false, user: null });
