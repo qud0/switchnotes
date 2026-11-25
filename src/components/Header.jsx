@@ -38,7 +38,8 @@ import {
   Radio,
   MoreHorizontal,
   X,
-  Database
+  Database,
+  GraduationCap
 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -135,6 +136,7 @@ export function Header({
     { id: 'ipam', label: 'IPAM', icon: Globe },
     { id: 'rack', label: 'Стойка 42U', icon: Layers },
     { id: 'topology', label: 'Топология', icon: Network },
+    { id: 'lab', label: 'Лаборатория', icon: GraduationCap },
     { id: 'campus', label: 'Карта завода', icon: Factory },
     { id: 'floorPlans', label: 'Планы этажей', icon: MapPin },
     { id: 'cheatSheet', label: 'Шпаргалка', icon: BookMarked },

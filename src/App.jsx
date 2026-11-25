@@ -36,6 +36,7 @@ const DashboardView = lazy(() => import('./components/DashboardView'));
 const AuditHistoryView = lazy(() => import('./components/AuditHistoryView'));
 const CampusMapView = lazy(() => import('./components/CampusMapView'));
 const CheatSheetView = lazy(() => import('./components/CheatSheetView'));
+const NetworkLabView = lazy(() => import('./components/NetworkLabView').then(m => ({ default: m.NetworkLabView })));
 
 // Code-splitting for heavy on-demand modals:
 const ReportModal = lazy(() => import('./components/ReportModal').then(m => ({ default: m.ReportModal })));
@@ -250,6 +251,7 @@ export default function App() {
       ipam: 'IPAM подсети',
       rack: 'Стойка 42U',
       topology: 'Топология сети',
+      lab: 'Лаборатория сети',
       campus: 'Карта завода',
       floorPlans: 'Планы этажей',
       cheatSheet: 'Шпаргалка CLI',
@@ -1059,6 +1061,8 @@ export default function App() {
             onNavigateToIpam={() => setCurrentView('ipam')}
             theme={theme}
           />
+        ) : currentView === 'lab' ? (
+          <NetworkLabView theme={theme} />
         ) : currentView === 'ipam' ? (
           <IpamView
             vlans={vlans}
