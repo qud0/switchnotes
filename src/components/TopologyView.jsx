@@ -56,6 +56,7 @@ import { useToast } from '../context/ToastContext';
 import VlanWizardModal from './VlanWizardModal';
 import { FirmwareRolloutModal } from './FirmwareRolloutModal';
 import { OpticsHealthModal } from './OpticsHealthModal';
+import { TopologyExportModal } from './TopologyExportModal';
 
 export function TopologyView({
   switches = [],
@@ -154,6 +155,9 @@ export function TopologyView({
 
   // Optics Health & Early Degradation AI state
   const [isOpticsModalOpen, setIsOpticsModalOpen] = useState(false);
+
+  // Topology Export & Passport modal state
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   const handleOpenLldpModal = async (modeOverride) => {
     const mode = modeOverride || stitchMode;
@@ -1185,21 +1189,9 @@ export function TopologyView({
     setPathFindEnd('');
   };
 
-  // Export Topology to SVG file
+  // Export Topology to SVG, Draw.io or PDF Passport
   const handleExportSvg = () => {
-    if (!containerRef.current) return;
-    const svgElem = containerRef.current.querySelector('svg');
-    if (!svgElem) return;
-
-    const serializer = new XMLSerializer();
-    const svgContent = serializer.serializeToString(svgElem);
-    const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `switchbook-topology-${new Date().toISOString().slice(0, 10)}.svg`;
-    link.click();
-    URL.revokeObjectURL(url);
+    setIsExportModalOpen(true);
   };
 
   // Active links list based on nodeViewMode
@@ -1606,15 +1598,18 @@ export function TopologyView({
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
 
-          {/* SVG Export */}
+          {/* Export Topology Hub */}
           <button
-            onClick={handleExportSvg}
-            className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
-              isLight ? 'border-slate-300 text-slate-600 hover:bg-slate-100' : 'border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-white'
+            onClick={() => setIsExportModalOpen(true)}
+            className={`h-9 px-2.5 sm:px-3 rounded-xl border flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 font-medium text-xs ${
+              isLight
+                ? 'border-blue-300 text-blue-700 bg-blue-50/60 hover:bg-blue-100'
+                : 'border-blue-500/30 text-blue-400 bg-blue-500/10 hover:bg-blue-500/20'
             }`}
-            title="Экспортировать схему в векторный SVG"
+            title="Экспорт схемы сети (SVG, Visio/Draw.io, Паспорт PDF)"
           >
             <Download className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Экспорт схемы</span>
           </button>
 
           {/* Fullscreen */}
@@ -4378,6 +4373,20 @@ export function TopologyView({
         <OpticsHealthModal
           isOpen={isOpticsModalOpen}
           onClose={() => setIsOpticsModalOpen(false)}
+          theme={theme}
+        />
+
+        {/* Topology Export & Executive Network Passport Modal */}
+        <TopologyExportModal
+          isOpen={isExportModalOpen}
+          onClose={() => setIsExportModalOpen(false)}
+          switches={switches}
+          links={activeLinks}
+          patchPanels={patchPanels}
+          servers={servers}
+          workstations={workstationData || []}
+          vlans={vlans}
+          positions={positions}
           theme={theme}
         />
       </div>
