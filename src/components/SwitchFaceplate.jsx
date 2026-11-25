@@ -1399,19 +1399,24 @@ export function SwitchFaceplate({
                 </div>
               </div>
 
-              {/* Central Section: Copper RJ-45 Port Grid */}
-              <div className="flex-1 px-4 flex items-center gap-3">
+              {/* Central Section: Port Bays (Copper Groups + SFP Bays) */}
+              <div className="px-4 flex items-center gap-3 shrink-0">
                 {Array.from({ length: numGroups }).map((_, groupIdx) => {
                   const startIdx = groupIdx * (groupSize / 2);
                   const endIdx = startIdx + (groupSize / 2);
                   const groupTop = topRowPorts.slice(startIdx, endIdx);
                   const groupBottom = bottomRowPorts.slice(startIdx, endIdx);
+                  const firstPortNum = groupTop[0]?.number;
+                  const lastPortNum = (groupBottom[groupBottom.length - 1] || groupTop[groupTop.length - 1])?.number;
 
                   return (
-                    <div
-                      key={groupIdx}
-                      className={`p-2 border rounded-lg flex flex-col gap-2 shrink-0 ${chassisThemeStyles.groupBay}`}
-                    >
+                    <div key={groupIdx} className="flex flex-col items-center">
+                      <div className={`h-4 flex items-center justify-center uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-1 ${fontStyles.sfpHeader}`}>
+                        {firstPortNum}{lastPortNum && lastPortNum !== firstPortNum ? ` - ${lastPortNum}` : ''}
+                      </div>
+                      <div
+                        className={`p-2 border rounded-lg flex flex-col gap-2 shrink-0 ${chassisThemeStyles.groupBay}`}
+                      >
                       {/* Top Row (Odd Ports) */}
                       <div className="flex items-center gap-1.5">
                         {groupTop.map(port => {
@@ -1482,17 +1487,17 @@ export function SwitchFaceplate({
                         </div>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-
-              {/* Right Section: SFP / SFP+ Uplinks */}
-              {sfpPorts.length > 0 && (
-                <div className={`pl-4 border-l shrink-0 ${chassisThemeStyles.sfpBorder}`}>
-                  <div className={`uppercase tracking-widest text-center mb-1 text-slate-500 ${fontStyles.sfpHeader}`}>
-                    SFP / Uplinks
                   </div>
-                  <div className={`p-2 border rounded-lg flex flex-col gap-2 ${chassisThemeStyles.sfpBay}`}>
+                );
+              })}
+
+              {/* SFP / SFP+ Uplinks Bay (adjacent to copper bays with matching height) */}
+              {sfpPorts.length > 0 && (
+                <div className="flex flex-col items-center">
+                  <div className={`h-4 flex items-center justify-center uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-1 ${fontStyles.sfpHeader}`}>
+                    SFP {sfpPorts[0]?.number}{sfpPorts.length > 1 ? ` - ${sfpPorts[sfpPorts.length - 1]?.number}` : ''}
+                  </div>
+                  <div className={`p-2 border rounded-lg flex flex-col gap-2 shrink-0 ${chassisThemeStyles.sfpBay}`}>
                     {/* SFP Top Row */}
                     <div className="flex items-center gap-2">
                       {sfpTopRow.map(port => {
@@ -1562,9 +1567,30 @@ export function SwitchFaceplate({
                         })}
                       </div>
                     )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Right Section: Chassis Ventilation & Airflow (Fills remaining 19" rack space) */}
+              <div className="flex-1 h-32 flex items-center justify-end px-6 min-w-[80px]">
+                <div className="flex items-center gap-6 opacity-35 hover:opacity-60 transition-opacity select-none">
+                  <div className="hidden xl:flex flex-col items-center gap-0.5 text-[9px] font-mono text-slate-500 uppercase tracking-widest">
+                    <span>Airflow</span>
+                    <span className="text-[11px] leading-none">➔➔➔</span>
+                  </div>
+                  <div className="flex gap-1 py-1">
+                    {Array.from({ length: 14 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className={`w-1 h-14 rounded-full ${
+                          isLight ? 'bg-slate-300' : 'bg-slate-800 border-r border-slate-700/60 shadow-inner'
+                        }`}
+                      />
+                    ))}
                   </div>
                 </div>
-              )}
+              </div>
 
               {/* Right Rack Ear */}
               <div className={`w-10 h-36 border-l-2 rounded-r-lg flex flex-col justify-between items-center py-4 -mr-4 ml-4 shrink-0 shadow-inner ${chassisThemeStyles.rightEar}`}>

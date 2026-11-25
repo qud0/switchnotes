@@ -272,7 +272,7 @@ export function PortItem({
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         className={`relative flex flex-col items-center justify-between transition-all duration-150 cursor-pointer select-none rounded-md
-          ${isSfp ? 'w-13 h-20 p-1.5' : 'w-11 h-18 p-1'}
+          ${isSfp ? 'w-12 h-18 p-1' : 'w-11 h-18 p-1'}
           ${faceplateTheme === 'noc'
             ? (isDisabled ? 'bg-[#060a14] border border-slate-800 opacity-50' : 'bg-[#0b1222] border border-slate-700/80')
             : faceplateTheme === 'neon'
@@ -315,7 +315,7 @@ export function PortItem({
         }}
       >
         {/* Live Traffic Micro-Meter Bar (Left edge gauge) */}
-        {heatmapMode === 'traffic' && isLinkUp && (
+        {heatmapMode === 'traffic' && isLinkUp && utilizationPct > 0 && (
           <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-900/60 overflow-hidden rounded-l-xs pointer-events-none z-10">
             <div
               className={`w-full transition-all duration-300 ${
@@ -326,7 +326,7 @@ export function PortItem({
                   : 'bg-emerald-400'
               }`}
               style={{
-                height: `${Math.max(6, utilizationPct)}%`,
+                height: `${Math.min(100, Math.max(8, utilizationPct))}%`,
                 position: 'absolute',
                 bottom: 0
               }}
@@ -347,17 +347,27 @@ export function PortItem({
 
         {/* Top: Port Number & Dual Real-World LEDs (Link/Speed + PoE/Activity) */}
         <div className={`w-full flex items-center justify-between leading-none ${portNumberFont}`}>
-          <span className={`font-bold ${
-            faceplateTheme === 'noc'
-              ? (isSelected ? 'text-cyan-400 font-extrabold' : 'text-slate-100 font-extrabold')
-              : faceplateTheme === 'neon'
-              ? (isSelected ? 'text-white' : 'text-cyan-300 font-bold')
-              : faceplateTheme === 'vendor'
-              ? (isLight ? (isSelected ? 'text-blue-600' : 'text-slate-900') : (isSelected ? 'text-blue-400' : 'text-slate-200'))
-              : isLight ? (isSelected ? 'text-blue-600' : 'text-slate-700') : (isSelected ? 'text-blue-400' : 'text-slate-300')
-          }`}>
-            {port.number}
-          </span>
+          <div className="flex items-center gap-0.5 min-w-0">
+            <span className={`font-bold shrink-0 ${
+              faceplateTheme === 'noc'
+                ? (isSelected ? 'text-cyan-400 font-extrabold' : 'text-slate-100 font-extrabold')
+                : faceplateTheme === 'neon'
+                ? (isSelected ? 'text-white' : 'text-cyan-300 font-bold')
+                : faceplateTheme === 'vendor'
+                ? (isLight ? (isSelected ? 'text-blue-600' : 'text-slate-900') : (isSelected ? 'text-blue-400' : 'text-slate-200'))
+                : isLight ? (isSelected ? 'text-blue-600' : 'text-slate-700') : (isSelected ? 'text-blue-400' : 'text-slate-300')
+            }`}>
+              {port.number}
+            </span>
+            {port.lagId && (
+              <span
+                className="text-[7px] font-black px-0.5 py-0.2 rounded-2xs bg-indigo-500/25 text-indigo-400 border border-indigo-500/40 shrink-0"
+                title={`Входит в группу агрегации LAG ${port.lagId}`}
+              >
+                L{port.lagId}
+              </span>
+            )}
+          </div>
 
           {/* Dual LED Cluster with realistic glow */}
           <div className="flex items-center gap-1">
@@ -401,7 +411,7 @@ export function PortItem({
         {/* Center: Realistic Physical Jack (RJ-45 Metallic Cage or SFP Transceiver Cage) */}
         {isSfp ? (
           /* SFP / SFP+ Optical Cage with LC Duplex Transceiver latch */
-          <div className={`w-full h-8.5 rounded-xs border flex flex-col items-center justify-between p-0.5 relative overflow-hidden shadow-inner ${
+          <div className={`w-full h-8 rounded-xs border flex flex-col items-center justify-between p-0.5 relative overflow-hidden shadow-inner ${
             faceplateTheme === 'noc'
               ? 'bg-gradient-to-b from-[#0b1329] to-[#040817] border-slate-700'
               : faceplateTheme === 'neon'
@@ -419,7 +429,7 @@ export function PortItem({
             </div>
 
             {/* Inner SFP optical duplex port receiver (Blue/Aqua latch) */}
-            <div className={`w-full h-5 rounded-xs flex items-center justify-center gap-1 border shadow-inner ${
+            <div className={`w-full h-4.5 rounded-xs flex items-center justify-center gap-1 border shadow-inner ${
               isLinkUp
                 ? (speed === '10G' ? 'bg-cyan-950/70 border-cyan-500/50' : 'bg-blue-950/70 border-blue-500/50')
                 : (isLight ? 'bg-slate-300/80 border-slate-400' : 'bg-slate-950 border-slate-700/60')
@@ -536,21 +546,13 @@ export function PortItem({
           </div>
         )}
 
-        {/* Bottom: VLAN ID / Trunk Mode and LAG badge */}
-        <div className="w-full flex items-center justify-center gap-0.5 leading-none mt-0.5">
-          {port.lagId && (
-            <span
-              className={`text-[8px] font-bold px-0.5 py-0.2 rounded-xs bg-indigo-500/20 text-indigo-500 border border-indigo-500/30 ${badgeFont}`}
-              title={`Входит в группу агрегации LAG ${port.lagId}`}
-            >
-              L{port.lagId}
-            </span>
-          )}
+        {/* Bottom: VLAN ID / Trunk Mode / Heatmap badge */}
+        <div className="w-full flex items-center justify-center leading-none mt-0.5">
           {isDisabled ? (
             <span className={`text-slate-400 ${badgeFont}`}>OFF</span>
           ) : heatmapMode === 'traffic' ? (
             <span
-              className={`inline-block px-1 py-0.5 rounded-xs border transition-all ${badgeFont}`}
+              className={`inline-block px-1 py-0.2 rounded-xs border transition-all font-mono font-bold text-[8px] ${badgeFont}`}
               style={{
                 backgroundColor: `${accentColor}25`,
                 borderColor: `${accentColor}66`,
